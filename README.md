@@ -14,8 +14,8 @@ React Native + Expo prototype for tracking life totals in games like Magic: The 
 - Four-player Commander-style starting state.
 - Fast life controls: `-5`, `-1`, `+1`, `+5`.
 - Poison and commander damage counters.
-- Local-first MVP persistence with `@react-native-async-storage/async-storage`.
-- Local event log for life changes as the future sync primitive.
+- Current prototype persistence with `@react-native-async-storage/async-storage`.
+- Accepted MVP sync architecture: MMKV local/offline store + Convex remote source of truth + optimistic life-change events.
 
 ## Run
 
@@ -31,6 +31,10 @@ If Metro port `8081` is already taken, run:
 bunx expo start --web --port 8083
 bunx expo start --ios --port 8082
 ```
+
+## Sync architecture decision
+
+The accepted MVP sync decision is documented in [`docs/mvp-sync-architecture.md`](docs/mvp-sync-architecture.md): MMKV is the local/offline store, Convex is the remote source of truth, life taps update optimistically, every life change uses a `clientEventId`, and only the owning player/device can modify that player's score.
 
 ## Research summary
 
@@ -60,13 +64,12 @@ Recommended Convex shape if chosen:
 
 For the active match engine:
 
-1. Promote the current AsyncStorage event log to SQLite (`expo-sqlite`) once match history/querying grows.
-2. Model match updates as append-only events: `matchCreated`, `lifeChanged`, `poisonChanged`, `commanderDamageChanged`, `matchEnded`.
-3. Keep derived current totals in UI state for instant taps.
-4. Add a durable outbox table for sync retries.
-5. Pick backend path after testing:
-   - Convex + custom event outbox if Convex developer experience wins.
-   - PowerSync + Supabase/Postgres if offline tournament operations become the dominant requirement.
+1. Replace prototype AsyncStorage persistence with MMKV as the local/offline store for active match state and the sync outbox.
+2. Model match updates as append-only events, starting with `lifeChanged` for MVP.
+3. Keep derived current totals in UI state for instant optimistic taps.
+4. Flush a durable MMKV outbox to idempotent Convex mutations keyed by `clientEventId`.
+5. Treat Convex as the canonical remote source of truth and reconcile local state from realtime snapshots.
+6. Consider SQLite or a richer local database later if match history/querying outgrows MMKV.
 
 ## Tournament feature direction
 
