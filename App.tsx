@@ -267,7 +267,7 @@ function LifePanel({
         <Text style={[styles.tapMark, { color: theme.subtle }]}>+</Text>
       </Pressable>
 
-      <View pointerEvents="none" style={[styles.lifeOverlay, { transform: [{ rotate: rotation }] }]}> 
+      <View style={[styles.lifeOverlay, { pointerEvents: 'none', transform: [{ rotate: rotation }] }]}> 
         <Text style={[styles.playerName, { color: theme.text }]}>{player.name}</Text>
         <Text style={[styles.lifeTotal, { color: theme.text, fontSize: lifeSize }]}>{player.life}</Text>
       </View>
