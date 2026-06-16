@@ -4,216 +4,173 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
-type PrototypeKey = 'arena' | 'neon' | 'parchment' | 'minimal' | 'tournament';
+type PrototypeKey = 'classic' | 'ink' | 'glass' | 'paper' | 'store';
 
 type Player = {
   id: string;
   name: string;
   life: number;
-  poison: number;
-  commander: number;
-  accent: string;
+  color: string;
 };
 
 type LifeEvent = {
   id: string;
   playerId: string;
   delta: number;
-  at: string;
+  createdAt: number;
 };
 
 type Theme = {
   key: PrototypeKey;
   name: string;
-  tagline: string;
-  description: string;
-  statusBar: 'light' | 'dark';
-  root: string;
-  surface: string;
-  surfaceAlt: string;
+  background: string;
   text: string;
-  muted: string;
+  subtle: string;
+  rail: string;
+  railText: string;
   border: string;
-  positive: string;
-  negative: string;
-  hero: string;
-  chip: string;
-  shadow: string;
+  playerColors: string[];
   radius: number;
-  cardStyle: 'split' | 'glow' | 'paper' | 'flat' | 'broadcast';
 };
 
-const STORAGE_KEY = 'mtg-life-tracker:v1';
+type SavedMatch = {
+  prototype: PrototypeKey;
+  players: Player[];
+  events: LifeEvent[];
+};
 
-const startingPlayers: Player[] = [
-  { id: 'p1', name: 'Ajani', life: 40, poison: 0, commander: 0, accent: '#f7c948' },
-  { id: 'p2', name: 'Liliana', life: 40, poison: 0, commander: 0, accent: '#b794f4' },
-  { id: 'p3', name: 'Chandra', life: 40, poison: 0, commander: 0, accent: '#fb7185' },
-  { id: 'p4', name: 'Nissa', life: 40, poison: 0, commander: 0, accent: '#34d399' },
-];
+const STORAGE_KEY = 'mana-ledger:minimal-match:v2';
 
 const themes: Theme[] = [
   {
-    key: 'arena',
-    name: 'Arena Command',
-    tagline: 'High-contrast table dashboard',
-    description: 'Large readable panels for Commander pods and casual tables.',
-    statusBar: 'light',
-    root: '#111827',
-    surface: '#1f2937',
-    surfaceAlt: '#273449',
-    text: '#f9fafb',
-    muted: '#cbd5e1',
-    border: '#374151',
-    positive: '#22c55e',
-    negative: '#ef4444',
-    hero: '#60a5fa',
-    chip: '#172554',
-    shadow: '#020617',
-    radius: 28,
-    cardStyle: 'split',
+    key: 'classic',
+    name: 'Classic',
+    background: '#111111',
+    text: '#050505',
+    subtle: '#2d2d2d',
+    rail: '#f8fafc',
+    railText: '#111111',
+    border: '#050505',
+    playerColors: ['#facc15', '#fb2d63', '#fb8ff2', '#3b5bff'],
+    radius: 22,
   },
   {
-    key: 'neon',
-    name: 'Neon Stack',
-    tagline: 'Arcade-inspired fast tapping',
-    description: 'Glowing controls, chunky numbers, and dramatic game-state cues.',
-    statusBar: 'light',
-    root: '#070014',
-    surface: '#18002f',
-    surfaceAlt: '#220044',
-    text: '#f5e8ff',
-    muted: '#c084fc',
-    border: '#7e22ce',
-    positive: '#00f5d4',
-    negative: '#ff3d81',
-    hero: '#f0abfc',
-    chip: '#2e1065',
-    shadow: '#fb00ff',
-    radius: 18,
-    cardStyle: 'glow',
-  },
-  {
-    key: 'parchment',
-    name: 'Spellbook',
-    tagline: 'Warm paper and fantasy texture',
-    description: 'A board-game companion feel for casual pods and kitchen tables.',
-    statusBar: 'dark',
-    root: '#f7ead0',
-    surface: '#fff7e6',
-    surfaceAlt: '#f2dca7',
-    text: '#342312',
-    muted: '#7c5c34',
-    border: '#c49b57',
-    positive: '#2f855a',
-    negative: '#b91c1c',
-    hero: '#9a3412',
-    chip: '#fef3c7',
-    shadow: '#8b5e34',
-    radius: 12,
-    cardStyle: 'paper',
-  },
-  {
-    key: 'minimal',
-    name: 'Quiet Match',
-    tagline: 'Calm, battery-friendly, low noise',
-    description: 'Clean typography for players who want the counter to disappear.',
-    statusBar: 'dark',
-    root: '#f8fafc',
-    surface: '#ffffff',
-    surfaceAlt: '#eef2ff',
-    text: '#0f172a',
-    muted: '#64748b',
-    border: '#dbe3ef',
-    positive: '#16a34a',
-    negative: '#dc2626',
-    hero: '#2563eb',
-    chip: '#e0e7ff',
-    shadow: '#94a3b8',
-    radius: 24,
-    cardStyle: 'flat',
-  },
-  {
-    key: 'tournament',
-    name: 'Store Ops',
-    tagline: 'Round-ready and judge-visible',
-    description: 'Competition mode concept with table, timer, sync queue, and reporting.',
-    statusBar: 'light',
-    root: '#071018',
-    surface: '#0d1b2a',
-    surfaceAlt: '#12324a',
+    key: 'ink',
+    name: 'Ink',
+    background: '#020617',
     text: '#f8fafc',
-    muted: '#a7c7d9',
-    border: '#23506b',
-    positive: '#84cc16',
-    negative: '#f97316',
-    hero: '#38bdf8',
-    chip: '#082f49',
-    shadow: '#000000',
+    subtle: '#cbd5e1',
+    rail: '#0f172a',
+    railText: '#f8fafc',
+    border: '#f8fafc',
+    playerColors: ['#0f766e', '#7c3aed', '#be123c', '#1d4ed8'],
     radius: 8,
-    cardStyle: 'broadcast',
+  },
+  {
+    key: 'glass',
+    name: 'Glass',
+    background: '#e0f2fe',
+    text: '#082f49',
+    subtle: '#075985',
+    rail: '#ffffff',
+    railText: '#082f49',
+    border: '#082f49',
+    playerColors: ['#7dd3fc', '#a7f3d0', '#c4b5fd', '#f9a8d4'],
+    radius: 30,
+  },
+  {
+    key: 'paper',
+    name: 'Paper',
+    background: '#f5ead7',
+    text: '#2f1e12',
+    subtle: '#704214',
+    rail: '#fff7ed',
+    railText: '#2f1e12',
+    border: '#2f1e12',
+    playerColors: ['#f2c078', '#d96c75', '#a8c686', '#6daedb'],
+    radius: 14,
+  },
+  {
+    key: 'store',
+    name: 'Store',
+    background: '#06151f',
+    text: '#e0f2fe',
+    subtle: '#bae6fd',
+    rail: '#082f49',
+    railText: '#e0f2fe',
+    border: '#38bdf8',
+    playerColors: ['#155e75', '#0f766e', '#7c2d12', '#581c87'],
+    radius: 4,
   },
 ];
 
+const initialPlayers: Player[] = [
+  { id: 'p1', name: 'Player 1', life: 40, color: themes[0].playerColors[0] },
+  { id: 'p2', name: 'Player 2', life: 40, color: themes[0].playerColors[1] },
+  { id: 'p3', name: 'Player 3', life: 40, color: themes[0].playerColors[2] },
+  { id: 'p4', name: 'Player 4', life: 40, color: themes[0].playerColors[3] },
+];
+
 export default function App() {
-  const [themeKey, setThemeKey] = useState<PrototypeKey>('arena');
-  const [players, setPlayers] = useState<Player[]>(startingPlayers);
+  const [prototype, setPrototype] = useState<PrototypeKey>('classic');
+  const [players, setPlayers] = useState<Player[]>(initialPlayers);
   const [events, setEvents] = useState<LifeEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const { width, height } = useWindowDimensions();
 
   const theme = useMemo(
-    () => themes.find((candidate) => candidate.key === themeKey) ?? themes[0],
-    [themeKey],
+    () => themes.find((candidate) => candidate.key === prototype) ?? themes[0],
+    [prototype],
   );
 
+  const columns = width > 700 || width > height ? 4 : 2;
+  const rows = Math.ceil(players.length / columns);
+  const panelHeight = Math.max(178, (height - 92) / rows);
+  const lifeSize = Math.min(columns === 4 ? 78 : 108, Math.max(68, width / 4.6));
+
   useEffect(() => {
-    async function restoreLocalMatch() {
+    async function restore() {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const saved = JSON.parse(raw) as {
-            themeKey?: PrototypeKey;
-            players?: Player[];
-            events?: LifeEvent[];
-          };
-          if (saved.themeKey) setThemeKey(saved.themeKey);
-          if (saved.players) setPlayers(saved.players);
+          const saved = JSON.parse(raw) as SavedMatch;
+          if (saved.prototype) setPrototype(saved.prototype);
+          if (saved.players) setPlayers(applyThemeColors(saved.players, saved.prototype ?? 'classic'));
           if (saved.events) setEvents(saved.events);
         }
       } catch (error) {
-        console.warn('Unable to restore local match', error);
+        console.warn('Could not restore local match', error);
       } finally {
         setLoaded(true);
       }
     }
 
-    restoreLocalMatch();
+    restore();
   }, []);
 
   useEffect(() => {
     if (!loaded) return;
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ prototype, players, events })).catch((error) =>
+      console.warn('Could not save local match', error),
+    );
+  }, [events, loaded, players, prototype]);
 
-    AsyncStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ themeKey, players, events }),
-    ).catch((error) => console.warn('Unable to persist local match', error));
-  }, [events, loaded, players, themeKey]);
-
-  const totalLife = players.reduce((sum, player) => sum + player.life, 0);
-  const recentEvents = events.slice(0, 4);
+  useEffect(() => {
+    setPlayers((current) => applyThemeColors(current, prototype));
+  }, [prototype]);
 
   function adjustLife(playerId: string, delta: number) {
     const event: LifeEvent = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: `${Date.now()}-${playerId}-${delta}`,
       playerId,
       delta,
-      at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: Date.now(),
     };
 
     setPlayers((current) =>
@@ -221,588 +178,195 @@ export default function App() {
         player.id === playerId ? { ...player, life: player.life + delta } : player,
       ),
     );
-    setEvents((current) => [event, ...current].slice(0, 50));
+    setEvents((current) => [event, ...current].slice(0, 100));
   }
 
-  function bumpCounter(playerId: string, key: 'poison' | 'commander', delta: number) {
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId
-          ? { ...player, [key]: Math.max(0, player[key] + delta) }
-          : player,
-      ),
-    );
+  function cyclePrototype() {
+    const index = themes.findIndex((candidate) => candidate.key === prototype);
+    const nextTheme = themes[(index + 1) % themes.length];
+    setPrototype(nextTheme.key);
   }
 
   function resetMatch() {
-    setPlayers(startingPlayers);
+    setPlayers(applyThemeColors(initialPlayers, prototype));
     setEvents([]);
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.root }]}>
-      <StatusBar style={theme.statusBar} />
-      <ScrollView
-        contentContainerStyle={[styles.screen, { backgroundColor: theme.root }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.titleBlock}>
-            <Text style={[styles.kicker, { color: theme.hero }]}>Local-first life tracker</Text>
-            <Text style={[styles.title, { color: theme.text }]}>Mana Ledger</Text>
-            <Text style={[styles.subtitle, { color: theme.muted }]}>{theme.description}</Text>
-          </View>
-          <Pressable
-            onPress={resetMatch}
-            style={({ pressed }) => [
-              styles.resetButton,
-              { borderColor: theme.border, backgroundColor: theme.surfaceAlt, opacity: pressed ? 0.72 : 1 },
-            ]}
-          >
-            <Text style={[styles.resetText, { color: theme.text }]}>Reset 40</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView
-          horizontal
-          contentContainerStyle={styles.prototypeRail}
-          showsHorizontalScrollIndicator={false}
-        >
-          {themes.map((candidate) => {
-            const active = candidate.key === theme.key;
-            return (
-              <Pressable
-                key={candidate.key}
-                onPress={() => setThemeKey(candidate.key)}
-                style={({ pressed }) => [
-                  styles.prototypeTab,
-                  {
-                    backgroundColor: active ? theme.hero : theme.surface,
-                    borderColor: active ? theme.hero : theme.border,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.prototypeName, { color: active ? theme.root : theme.text }]}>
-                  {candidate.name}
-                </Text>
-                <Text style={[styles.prototypeTagline, { color: active ? theme.root : theme.muted }]}>
-                  {candidate.tagline}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        <View
-          style={[
-            styles.matchPanel,
-            panelShadow(theme),
-            { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: theme.radius },
-          ]}
-        >
-          <View>
-            <Text style={[styles.panelLabel, { color: theme.hero }]}>Prototype</Text>
-            <Text style={[styles.panelTitle, { color: theme.text }]}>{theme.name}</Text>
-          </View>
-          <View style={styles.matchStats}>
-            <StatPill label="Round" value="2" theme={theme} />
-            <StatPill label="Table" value="14" theme={theme} />
-            <StatPill label="Total life" value={`${totalLife}`} theme={theme} />
-          </View>
-        </View>
-
-        <View style={styles.grid}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <StatusBar style={prototype === 'classic' || prototype === 'glass' || prototype === 'paper' ? 'dark' : 'light'} />
+      <View style={[styles.appShell, { backgroundColor: theme.background }]}> 
+        <View style={styles.board}>
           {players.map((player, index) => (
-            <PlayerCard
+            <LifePanel
+              columns={columns}
               index={index}
               key={player.id}
+              lifeSize={lifeSize}
               onAdjust={(delta) => adjustLife(player.id, delta)}
-              onCounter={(counter, delta) => bumpCounter(player.id, counter, delta)}
+              panelHeight={panelHeight}
               player={player}
               theme={theme}
             />
           ))}
         </View>
 
-        <View style={styles.bottomGrid}>
-          <View
-            style={[
-              styles.syncCard,
-              { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: theme.radius },
-              panelShadow(theme),
-            ]}
-          >
-            <Text style={[styles.panelLabel, { color: theme.hero }]}>Sync design</Text>
-            <Text style={[styles.syncTitle, { color: theme.text }]}>Local event log first</Text>
-            <Text style={[styles.syncCopy, { color: theme.muted }]}>Every life change is stored locally immediately. Later, the same event stream can flush to Convex, PowerSync, or Supabase with idempotent event IDs.</Text>
-            <View style={styles.syncRows}>
-              <SyncRow label="Local persistence" value="AsyncStorage MVP" theme={theme} />
-              <SyncRow label="Queued events" value={`${events.length}/50`} theme={theme} />
-              <SyncRow label="Future backend" value="Convex candidate" theme={theme} />
-            </View>
-          </View>
-
-          <View
-            style={[
-              styles.syncCard,
-              { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: theme.radius },
-              panelShadow(theme),
-            ]}
-          >
-            <Text style={[styles.panelLabel, { color: theme.hero }]}>Recent changes</Text>
-            {recentEvents.length === 0 ? (
-              <Text style={[styles.emptyLog, { color: theme.muted }]}>Tap a life control to create the first local event.</Text>
-            ) : (
-              recentEvents.map((event) => {
-                const player = players.find((candidate) => candidate.id === event.playerId);
-                const positive = event.delta > 0;
-                return (
-                  <View key={event.id} style={[styles.logRow, { borderBottomColor: theme.border }]}> 
-                    <Text style={[styles.logName, { color: theme.text }]}>{player?.name ?? 'Player'}</Text>
-                    <Text style={[styles.logDelta, { color: positive ? theme.positive : theme.negative }]}> 
-                      {positive ? '+' : ''}{event.delta}
-                    </Text>
-                    <Text style={[styles.logTime, { color: theme.muted }]}>{event.at}</Text>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        </View>
-      </ScrollView>
+        <Pressable
+          accessibilityHint="Tap to cycle prototype styles. Long press to reset all players to 40 life."
+          accessibilityLabel="Prototype menu"
+          accessibilityRole="button"
+          onLongPress={resetMatch}
+          onPress={cyclePrototype}
+          style={[styles.centerButton, { backgroundColor: theme.rail, borderColor: theme.border }]}
+        >
+          <Text style={[styles.centerButtonText, { color: theme.railText }]}>≡</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
 
-function PlayerCard({
+function LifePanel({
+  columns,
   index,
+  lifeSize,
   onAdjust,
-  onCounter,
+  panelHeight,
   player,
   theme,
 }: {
+  columns: number;
   index: number;
+  lifeSize: number;
   onAdjust: (delta: number) => void;
-  onCounter: (counter: 'poison' | 'commander', delta: number) => void;
+  panelHeight: number;
   player: Player;
   theme: Theme;
 }) {
-  const danger = player.life <= 10 || player.poison >= 8 || player.commander >= 18;
-  const eliminated = player.life <= 0 || player.poison >= 10 || player.commander >= 21;
-
+  const isRightColumn = columns === 2 && index % 2 === 1;
+  const rotation = columns === 2 ? (isRightColumn ? '90deg' : '-90deg') : '0deg';
   return (
     <View
       style={[
-        styles.playerCard,
-        cardSpecificStyle(theme, player.accent),
-        panelShadow(theme),
-        { borderRadius: theme.radius, borderColor: danger ? theme.negative : theme.border },
+        styles.panel,
+        {
+          backgroundColor: player.color,
+          borderColor: theme.border,
+          borderRadius: theme.radius,
+          flexBasis: `${100 / columns}%`,
+          minHeight: panelHeight,
+        },
       ]}
     >
-      <View style={styles.cardTopRow}>
-        <View>
-          <Text style={[styles.seatLabel, { color: theme.muted }]}>Seat {index + 1}</Text>
-          <Text style={[styles.playerName, { color: theme.text }]}>{player.name}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: eliminated ? theme.negative : theme.chip }]}> 
-          <Text style={[styles.statusText, { color: eliminated ? '#ffffff' : theme.hero }]}>
-            {eliminated ? 'OUT' : 'LIVE'}
-          </Text>
-        </View>
+      <Pressable
+        accessibilityLabel={`${player.name} gain 1 life`}
+        accessibilityRole="button"
+        onPress={() => onAdjust(1)}
+        style={styles.tapHalf}
+      >
+        <Text style={[styles.tapMark, { color: theme.subtle }]}>+</Text>
+      </Pressable>
+
+      <View pointerEvents="none" style={[styles.lifeOverlay, { transform: [{ rotate: rotation }] }]}> 
+        <Text style={[styles.playerName, { color: theme.text }]}>{player.name}</Text>
+        <Text style={[styles.lifeTotal, { color: theme.text, fontSize: lifeSize }]}>{player.life}</Text>
       </View>
 
-      <View style={styles.lifeRow}>
-        <LifeButton label="−5" onPress={() => onAdjust(-5)} theme={theme} tone="down" />
-        <LifeButton label="−1" onPress={() => onAdjust(-1)} theme={theme} tone="down" />
-        <View style={styles.lifeStack}>
-          <Text style={[styles.lifeTotal, { color: eliminated ? theme.negative : theme.text }]}>
-            {player.life}
-          </Text>
-          <Text style={[styles.lifeLabel, { color: theme.muted }]}>life</Text>
-        </View>
-        <LifeButton label="+1" onPress={() => onAdjust(1)} theme={theme} tone="up" />
-        <LifeButton label="+5" onPress={() => onAdjust(5)} theme={theme} tone="up" />
-      </View>
-
-      <View style={styles.counterRow}>
-        <CounterControl label="Poison" value={player.poison} onMinus={() => onCounter('poison', -1)} onPlus={() => onCounter('poison', 1)} theme={theme} />
-        <CounterControl label="Commander" value={player.commander} onMinus={() => onCounter('commander', -1)} onPlus={() => onCounter('commander', 1)} theme={theme} />
-      </View>
+      <Pressable
+        accessibilityLabel={`${player.name} lose 1 life`}
+        accessibilityRole="button"
+        onPress={() => onAdjust(-1)}
+        style={styles.tapHalf}
+      >
+        <Text style={[styles.tapMark, { color: theme.subtle }]}>−</Text>
+      </Pressable>
     </View>
   );
 }
 
-function LifeButton({
-  label,
-  onPress,
-  theme,
-  tone,
-}: {
-  label: string;
-  onPress: () => void;
-  theme: Theme;
-  tone: 'up' | 'down';
-}) {
-  const color = tone === 'up' ? theme.positive : theme.negative;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.lifeButton,
-        { backgroundColor: color, opacity: pressed ? 0.62 : 1 },
-      ]}
-    >
-      <Text style={styles.lifeButtonText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function CounterControl({
-  label,
-  onMinus,
-  onPlus,
-  theme,
-  value,
-}: {
-  label: string;
-  onMinus: () => void;
-  onPlus: () => void;
-  theme: Theme;
-  value: number;
-}) {
-  return (
-    <View style={[styles.counterControl, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}> 
-      <Text style={[styles.counterLabel, { color: theme.muted }]}>{label}</Text>
-      <View style={styles.counterButtons}>
-        <Pressable onPress={onMinus} style={[styles.counterButton, { borderColor: theme.border }]}> 
-          <Text style={[styles.counterButtonText, { color: theme.text }]}>−</Text>
-        </Pressable>
-        <Text style={[styles.counterValue, { color: theme.text }]}>{value}</Text>
-        <Pressable onPress={onPlus} style={[styles.counterButton, { borderColor: theme.border }]}> 
-          <Text style={[styles.counterButtonText, { color: theme.text }]}>+</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function StatPill({ label, theme, value }: { label: string; theme: Theme; value: string }) {
-  return (
-    <View style={[styles.statPill, { backgroundColor: theme.chip, borderColor: theme.border }]}> 
-      <Text style={[styles.statLabel, { color: theme.muted }]}>{label}</Text>
-      <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
-    </View>
-  );
-}
-
-function SyncRow({ label, theme, value }: { label: string; theme: Theme; value: string }) {
-  return (
-    <View style={[styles.syncRow, { borderBottomColor: theme.border }]}> 
-      <Text style={[styles.syncRowLabel, { color: theme.muted }]}>{label}</Text>
-      <Text style={[styles.syncRowValue, { color: theme.text }]}>{value}</Text>
-    </View>
-  );
-}
-
-function panelShadow(theme: Theme) {
-  return {
-    shadowColor: theme.shadow,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: theme.key === 'minimal' ? 0.12 : 0.28,
-    shadowRadius: theme.key === 'neon' ? 18 : 10,
-    elevation: 8,
-  };
-}
-
-function cardSpecificStyle(theme: Theme, accent: string) {
-  switch (theme.cardStyle) {
-    case 'glow':
-      return { backgroundColor: theme.surface, borderWidth: 2, borderTopColor: accent };
-    case 'paper':
-      return { backgroundColor: theme.surface, borderWidth: 1.5, borderLeftWidth: 8, borderLeftColor: accent };
-    case 'flat':
-      return { backgroundColor: theme.surface, borderWidth: 1 };
-    case 'broadcast':
-      return { backgroundColor: theme.surface, borderWidth: 1, borderTopWidth: 6, borderTopColor: accent };
-    case 'split':
-    default:
-      return { backgroundColor: theme.surface, borderWidth: 1, borderLeftWidth: 6, borderLeftColor: accent };
-  }
+function applyThemeColors(players: Player[], prototype: PrototypeKey) {
+  const theme = themes.find((candidate) => candidate.key === prototype) ?? themes[0];
+  return players.map((player, index) => ({
+    ...player,
+    color: theme.playerColors[index % theme.playerColors.length],
+  }));
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  screen: {
-    gap: 18,
-    padding: 18,
-    paddingBottom: 36,
-  },
-  header: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 16,
-    justifyContent: 'space-between',
-  },
-  titleBlock: {
-    flex: 1,
-  },
-  kicker: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-  },
-  title: {
-    fontSize: 42,
-    fontWeight: '900',
-    letterSpacing: -1.2,
-    marginTop: 4,
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 6,
-  },
-  resetButton: {
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-  },
-  resetText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  prototypeRail: {
-    gap: 10,
-    paddingRight: 18,
-  },
-  prototypeTab: {
-    borderRadius: 18,
-    borderWidth: 1,
-    minWidth: 154,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  prototypeName: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  prototypeTagline: {
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 15,
-    marginTop: 3,
-  },
-  matchPanel: {
-    alignItems: 'flex-start',
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 18,
-    justifyContent: 'space-between',
-    padding: 18,
-  },
-  panelLabel: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  panelTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 4,
-  },
-  matchStats: {
-    alignItems: 'stretch',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'flex-end',
-    maxWidth: 210,
-  },
-  statPill: {
-    borderRadius: 14,
-    borderWidth: 1,
-    minWidth: 64,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  grid: {
-    gap: 14,
-  },
-  playerCard: {
-    gap: 18,
-    padding: 18,
-  },
-  cardTopRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  seatLabel: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
-  playerName: {
-    fontSize: 27,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    marginTop: 2,
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  lifeRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 9,
-    justifyContent: 'space-between',
-  },
-  lifeButton: {
-    alignItems: 'center',
-    borderRadius: 18,
-    height: 52,
-    justifyContent: 'center',
-    minWidth: 48,
-    paddingHorizontal: 9,
-  },
-  lifeButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  lifeStack: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  lifeTotal: {
-    fontSize: 64,
-    fontWeight: '900',
-    letterSpacing: -3,
-  },
-  lifeLabel: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1.4,
-    marginTop: -6,
-    textTransform: 'uppercase',
-  },
-  counterRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  counterControl: {
-    borderRadius: 16,
-    borderWidth: 1,
+  appShell: {
     flex: 1,
     padding: 10,
   },
-  counterLabel: {
+  board: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  panel: {
+    alignItems: 'center',
+    borderWidth: 3,
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  tapHalf: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  tapMark: {
+    fontSize: 22,
+    fontWeight: '900',
+    opacity: 0.65,
+  },
+  lifeOverlay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: '26%',
+    zIndex: 2,
+  },
+  playerName: {
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    marginBottom: -6,
+    opacity: 0.9,
+  },
+  lifeTotal: {
+    fontWeight: '900',
+    letterSpacing: -5,
+    lineHeight: 116,
+  },
+  deltaHint: {
     fontSize: 11,
     fontWeight: '900',
-    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: -10,
+    opacity: 0.55,
   },
-  counterButtons: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  counterButton: {
+  centerButton: {
     alignItems: 'center',
     borderRadius: 999,
-    borderWidth: 1,
-    height: 30,
+    borderWidth: 3,
+    height: 46,
     justifyContent: 'center',
-    width: 30,
+    left: '50%',
+    position: 'absolute',
+    top: '50%',
+    transform: [{ translateX: -23 }, { translateY: -23 }],
+    width: 46,
+    zIndex: 5,
   },
-  counterButtonText: {
-    fontSize: 19,
+  centerButtonText: {
+    fontSize: 27,
     fontWeight: '900',
-  },
-  counterValue: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  bottomGrid: {
-    gap: 14,
-  },
-  syncCard: {
-    borderWidth: 1,
-    gap: 10,
-    padding: 18,
-  },
-  syncTitle: {
-    fontSize: 21,
-    fontWeight: '900',
-  },
-  syncCopy: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  syncRows: {
-    marginTop: 4,
-  },
-  syncRow: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  syncRowLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  syncRowValue: {
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  emptyLog: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  logRow: {
-    alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: 10,
-    paddingVertical: 9,
-  },
-  logName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  logDelta: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  logTime: {
-    fontSize: 12,
-    fontWeight: '700',
+    lineHeight: 30,
   },
 });
