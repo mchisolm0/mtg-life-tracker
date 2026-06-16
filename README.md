@@ -14,7 +14,7 @@ React Native + Expo prototype for tracking life totals in games like Magic: The 
 - Four-player Commander-style starting state.
 - Fast life controls: `-5`, `-1`, `+1`, `+5`.
 - Poison and commander damage counters.
-- Current prototype persistence with `@react-native-async-storage/async-storage`.
+- Local-first MVP persistence with `react-native-mmkv`.
 - Accepted MVP sync architecture: MMKV local/offline store + Convex remote source of truth + optimistic life-change events.
 
 ## Run
@@ -64,7 +64,7 @@ Recommended Convex shape if chosen:
 
 For the active match engine:
 
-1. Replace prototype AsyncStorage persistence with MMKV as the local/offline store for active match state and the sync outbox.
+1. Use MMKV as the local/offline store for active match state and the sync outbox.
 2. Model match updates as append-only events, starting with `lifeChanged` for MVP.
 3. Keep derived current totals in UI state for instant optimistic taps.
 4. Flush a durable MMKV outbox to idempotent Convex mutations keyed by `clientEventId`.

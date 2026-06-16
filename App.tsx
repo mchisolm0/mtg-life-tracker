@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -9,22 +8,15 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-
-type PrototypeKey = 'classic' | 'ink' | 'glass' | 'paper' | 'store';
-
-type Player = {
-  id: string;
-  name: string;
-  life: number;
-  color: string;
-};
-
-type LifeEvent = {
-  id: string;
-  playerId: string;
-  delta: number;
-  createdAt: number;
-};
+import {
+  createLocalMatchSnapshot,
+  loadLocalMatch,
+  saveLocalMatch,
+  type LifeEvent,
+  type Player,
+  type PrototypeKey,
+  type QueuedLifeEvent,
+} from './src/storage/localMatchStore';
 
 type Theme = {
   key: PrototypeKey;
@@ -38,14 +30,6 @@ type Theme = {
   playerColors: string[];
   radius: number;
 };
-
-type SavedMatch = {
-  prototype: PrototypeKey;
-  players: Player[];
-  events: LifeEvent[];
-};
-
-const STORAGE_KEY = 'mana-ledger:minimal-match:v2';
 
 const themes: Theme[] = [
   {
@@ -121,6 +105,7 @@ export default function App() {
   const [prototype, setPrototype] = useState<PrototypeKey>('classic');
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
   const [events, setEvents] = useState<LifeEvent[]>([]);
+  const [outbox, setOutbox] = useState<QueuedLifeEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const { width, height } = useWindowDimensions();
 
@@ -135,31 +120,30 @@ export default function App() {
   const lifeSize = Math.min(columns === 4 ? 78 : 108, Math.max(68, width / 4.6));
 
   useEffect(() => {
-    async function restore() {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const saved = JSON.parse(raw) as SavedMatch;
-          if (saved.prototype) setPrototype(saved.prototype);
-          if (saved.players) setPlayers(applyThemeColors(saved.players, saved.prototype ?? 'classic'));
-          if (saved.events) setEvents(saved.events);
-        }
-      } catch (error) {
-        console.warn('Could not restore local match', error);
-      } finally {
-        setLoaded(true);
-      }
+    const saved = loadLocalMatch();
+
+    if (saved) {
+      setPrototype(saved.prototype);
+      setPlayers(applyThemeColors(saved.players, saved.prototype));
+      setEvents(saved.events);
+      setOutbox(saved.outbox);
     }
 
-    restore();
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
     if (!loaded) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ prototype, players, events })).catch((error) =>
-      console.warn('Could not save local match', error),
+
+    saveLocalMatch(
+      createLocalMatchSnapshot({
+        events,
+        outbox,
+        players,
+        prototype,
+      }),
     );
-  }, [events, loaded, players, prototype]);
+  }, [events, loaded, outbox, players, prototype]);
 
   useEffect(() => {
     setPlayers((current) => applyThemeColors(current, prototype));
@@ -179,6 +163,7 @@ export default function App() {
       ),
     );
     setEvents((current) => [event, ...current].slice(0, 100));
+    setOutbox((current) => [...current, { event, status: 'pending' }]);
   }
 
   function cyclePrototype() {
@@ -190,6 +175,7 @@ export default function App() {
   function resetMatch() {
     setPlayers(applyThemeColors(initialPlayers, prototype));
     setEvents([]);
+    setOutbox([]);
   }
 
   return (
