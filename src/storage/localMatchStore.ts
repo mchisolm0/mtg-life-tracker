@@ -11,6 +11,7 @@ export const createLocalMatch = localMatchStore.createLocalMatch;
 export const createLocalMatchId = localMatchStore.createLocalMatchId;
 export const getOrCreateDeviceId = localMatchStore.getOrCreateDeviceId;
 export const loadLocalMatch = localMatchStore.loadLocalMatch;
+export const linkLocalMatchToRemote = localMatchStore.linkLocalMatchToRemote;
 export const markQueuedEventAcked = localMatchStore.markQueuedEventAcked;
 export const markQueuedEventRetry = localMatchStore.markQueuedEventRetry;
 export const markQueuedEventRejected = localMatchStore.markQueuedEventRejected;

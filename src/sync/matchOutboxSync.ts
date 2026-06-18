@@ -5,6 +5,7 @@ import type {
   MatchPhase,
   RejectionReason,
 } from '../storage/localMatchStoreCore';
+import { isLocalOnlyMatch } from '../storage/localMatchStoreCore';
 
 export type CanonicalPlayerSnapshot = {
   color?: string;
@@ -90,8 +91,6 @@ export type FlushMatchOutboxOptions = {
 };
 
 const DEFAULT_FLUSH_LIMIT = 10;
-const LOCAL_MATCH_ID_PREFIX = 'local_';
-
 export async function flushMatchOutbox({
   api,
   limit = DEFAULT_FLUSH_LIMIT,
@@ -108,7 +107,7 @@ export async function flushMatchOutbox({
   };
   const match = store.loadLocalMatch();
 
-  if (!match || match.matchId.startsWith(LOCAL_MATCH_ID_PREFIX)) {
+  if (!match || isLocalOnlyMatch(match)) {
     result.skipped = store.readOutboxIds().length;
     return result;
   }

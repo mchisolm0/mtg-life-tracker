@@ -29,7 +29,7 @@ describe('local match storage contract', () => {
     expect(persistedMatch.eventIds).toEqual([clientEventId]);
     expect(store.readOutboxIds()).toEqual([clientEventId]);
     expect(storage.getNumber(localMatchStorageKeys.sequence)).toBe(1);
-    expect(queuedEvent.status).toBe('pending');
+    expect(queuedEvent.status).toBe('localOnly');
     expect(queuedEvent.attempts).toBe(0);
     expect(queuedEvent.event).toMatchObject({
       delta: -1,
@@ -171,6 +171,45 @@ describe('local match storage contract', () => {
 
     expect(retryEvent.status).toBe('retry');
     expect(retryEvent.nextAttemptAt).toBe(3000);
+    expect(store.readOutboxIds()).toEqual([clientEventId]);
+  });
+
+  test('links local-only matches to remote ids and marks local events pending', () => {
+    const storage = createMemoryStorage();
+    const store = createTestStore(storage);
+    const deviceId = store.getOrCreateDeviceId();
+    const match = store.createLocalMatch({
+      localMatchId: 'legacy_1',
+      matchId: 'legacy_1',
+      players: [createPlayer('p1', deviceId)],
+      prototype: 'classic',
+      startingLife: 40,
+    });
+    const nextMatch = store.recordLifeChange(match, 'p1', -1);
+    const clientEventId = nextMatch.eventIds[0];
+
+    expect(store.readQueuedEvent(clientEventId).status).toBe('localOnly');
+
+    const linkedMatch = store.linkLocalMatchToRemote({
+      _id: 'match_remote_1',
+      localMatchId: 'legacy_1',
+      phase: 'active',
+      players: [createPlayer('p1', deviceId)],
+      startingLife: 40,
+      updatedAt: 3000,
+      version: 0,
+    });
+    const linkedEvent = store.readQueuedEvent(clientEventId);
+
+    expect(linkedMatch).toMatchObject({
+      lastServerVersion: 0,
+      localMatchId: 'legacy_1',
+      matchId: 'match_remote_1',
+    });
+    expect(linkedMatch.players[0].life).toBe(39);
+    expect(linkedEvent.status).toBe('pending');
+    expect(linkedEvent.event.matchId).toBe('match_remote_1');
+    expect(store.loadLocalMatch().matchId).toBe('match_remote_1');
     expect(store.readOutboxIds()).toEqual([clientEventId]);
   });
 

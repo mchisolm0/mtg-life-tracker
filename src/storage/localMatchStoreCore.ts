@@ -103,10 +103,26 @@ type LegacyQueuedLifeEvent = {
   attempts?: number;
 };
 
+export type RemoteMatchSnapshot = {
+  _id?: string;
+  matchId?: string;
+  localMatchId?: string;
+  phase: MatchPhase;
+  players: RemotePlayerSnapshot[];
+  startingLife: number;
+  updatedAt: number;
+  version?: number;
+};
+
+export type RemotePlayerSnapshot = Omit<LocalPlayer, 'color'> & {
+  color?: string;
+};
+
 export const LOCAL_MATCH_STORAGE_SCHEMA_VERSION = 2;
 export const DEFAULT_STARTING_LIFE = 40;
 export const DEFAULT_ACTIVE_MATCH_ID = 'local-default-match';
 export const MAX_LIFE_DELTA = 100;
+export const LOCAL_MATCH_ID_PREFIX = 'local_';
 
 export const localMatchStorageKeys = {
   activeMatchId: 'mana-ledger:activeMatchId',
@@ -267,7 +283,7 @@ export function createLocalMatchStore(storage: LocalMatchStorage, options: Local
     const queuedEvent: LocalQueuedEvent = {
       schemaVersion: LOCAL_MATCH_STORAGE_SCHEMA_VERSION,
       event,
-      status: 'pending',
+      status: isLocalOnlyMatch(match) ? 'localOnly' : 'pending',
       attempts: 0,
     };
     const nextMatch: LocalMatch = {
@@ -284,6 +300,71 @@ export function createLocalMatchStore(storage: LocalMatchStorage, options: Local
     saveLocalMatch(nextMatch);
 
     return nextMatch;
+  }
+
+  function linkLocalMatchToRemote(canonicalMatch: RemoteMatchSnapshot): LocalMatch | undefined {
+    const currentMatch = loadLocalMatch();
+    if (!currentMatch || !isLocalOnlyMatch(currentMatch)) return currentMatch;
+
+    const remoteMatchId = canonicalMatch._id ?? canonicalMatch.matchId;
+    if (!remoteMatchId || isLocalMatchId(remoteMatchId)) return undefined;
+
+    const localMatchId = currentMatch.localMatchId ?? currentMatch.matchId;
+    const localPlayersById = new Map(currentMatch.players.map((player) => [player.playerId, player]));
+    const linkedMatch: LocalMatch = {
+      ...currentMatch,
+      lastServerVersion: canonicalMatch.version ?? currentMatch.lastServerVersion,
+      localMatchId,
+      matchId: remoteMatchId,
+      phase: canonicalMatch.phase,
+      players: canonicalMatch.players.map((player) => {
+        const localPlayer = localPlayersById.get(player.playerId);
+
+        return {
+          ...player,
+          color: player.color ?? localPlayer?.color ?? '#facc15',
+        };
+      }),
+      startingLife: canonicalMatch.startingLife,
+      updatedAt: canonicalMatch.updatedAt,
+    };
+
+    for (const clientEventId of currentMatch.eventIds) {
+      const queuedEvent = readQueuedEvent(clientEventId);
+      if (!queuedEvent) continue;
+
+      const nextQueuedEvent =
+        queuedEvent.event.matchId === currentMatch.matchId
+          ? {
+              ...queuedEvent,
+              event: {
+                ...queuedEvent.event,
+                matchId: remoteMatchId,
+              },
+              status: queuedEvent.status === 'localOnly' ? 'pending' : queuedEvent.status,
+            }
+          : queuedEvent;
+
+      writeQueuedEvent(nextQueuedEvent);
+
+      if (!isOptimisticStatus(nextQueuedEvent.status)) continue;
+
+      const playerIndex = linkedMatch.players.findIndex(
+        (player) => player.playerId === nextQueuedEvent.event.playerId,
+      );
+      if (playerIndex < 0) continue;
+
+      const player = linkedMatch.players[playerIndex];
+      linkedMatch.players[playerIndex] = {
+        ...player,
+        life: player.life + nextQueuedEvent.event.delta,
+        updatedAt: Math.max(player.updatedAt, nextQueuedEvent.event.createdAt),
+      };
+    }
+
+    saveLocalMatch(linkedMatch);
+
+    return linkedMatch;
   }
 
   function readQueuedEvent(clientEventId: string): LocalQueuedEvent | undefined {
@@ -564,6 +645,7 @@ export function createLocalMatchStore(storage: LocalMatchStorage, options: Local
     createLocalMatchId,
     getOrCreateDeviceId,
     loadLocalMatch,
+    linkLocalMatchToRemote,
     markQueuedEventAcked,
     markQueuedEventRetry,
     markQueuedEventRejected,
@@ -616,6 +698,18 @@ function isMatchPhase(value: unknown): value is MatchPhase {
 
 function isOutboxStatus(status: SyncStatus) {
   return status === 'localOnly' || status === 'pending' || status === 'retry';
+}
+
+function isOptimisticStatus(status: SyncStatus) {
+  return status === 'localOnly' || status === 'pending' || status === 'retry' || status === 'syncing';
+}
+
+export function isLocalOnlyMatch(match: Pick<LocalMatch, 'localMatchId' | 'matchId'>) {
+  return match.localMatchId === match.matchId || isLocalMatchId(match.matchId);
+}
+
+export function isLocalMatchId(matchId: string) {
+  return matchId.startsWith(LOCAL_MATCH_ID_PREFIX);
 }
 
 function isPrototypeKey(value: unknown): value is PrototypeKey {
