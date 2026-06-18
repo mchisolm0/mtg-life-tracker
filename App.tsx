@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   SafeAreaView,
@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import {
+  createLifeChangedEvent,
   createLocalMatchSnapshot,
   loadLocalMatch,
   saveLocalMatch,
@@ -107,6 +108,7 @@ export default function App() {
   const [events, setEvents] = useState<LifeEvent[]>([]);
   const [outbox, setOutbox] = useState<QueuedLifeEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const playersRef = useRef(initialPlayers);
   const { width, height } = useWindowDimensions();
 
   const theme = useMemo(
@@ -123,8 +125,11 @@ export default function App() {
     const saved = loadLocalMatch();
 
     if (saved) {
+      const restoredPlayers = applyThemeColors(saved.players, saved.prototype);
+
       setPrototype(saved.prototype);
-      setPlayers(applyThemeColors(saved.players, saved.prototype));
+      setPlayers(restoredPlayers);
+      playersRef.current = restoredPlayers;
       setEvents(saved.events);
       setOutbox(saved.outbox);
     }
@@ -146,22 +151,30 @@ export default function App() {
   }, [events, loaded, outbox, players, prototype]);
 
   useEffect(() => {
-    setPlayers((current) => applyThemeColors(current, prototype));
+    setPlayers((current) => {
+      const themedPlayers = applyThemeColors(current, prototype);
+      playersRef.current = themedPlayers;
+      return themedPlayers;
+    });
   }, [prototype]);
 
   function adjustLife(playerId: string, delta: number) {
-    const event: LifeEvent = {
-      id: `${Date.now()}-${playerId}-${delta}`,
-      playerId,
-      delta,
-      createdAt: Date.now(),
-    };
+    const player = playersRef.current.find((candidate) => candidate.id === playerId);
+    if (!player) return;
 
-    setPlayers((current) =>
-      current.map((player) =>
-        player.id === playerId ? { ...player, life: player.life + delta } : player,
-      ),
+    const nextLife = player.life + delta;
+    const event = createLifeChangedEvent({
+      delta,
+      nextLife,
+      playerId,
+      previousLife: player.life,
+    });
+    const nextPlayers = playersRef.current.map((candidate) =>
+      candidate.id === playerId ? { ...candidate, life: nextLife } : candidate,
     );
+
+    playersRef.current = nextPlayers;
+    setPlayers(nextPlayers);
     setEvents((current) => [event, ...current].slice(0, 100));
     setOutbox((current) => [...current, { event, status: 'pending' }]);
   }
@@ -173,7 +186,9 @@ export default function App() {
   }
 
   function resetMatch() {
-    setPlayers(applyThemeColors(initialPlayers, prototype));
+    const resetPlayers = applyThemeColors(initialPlayers, prototype);
+    playersRef.current = resetPlayers;
+    setPlayers(resetPlayers);
     setEvents([]);
     setOutbox([]);
   }

@@ -10,9 +10,15 @@ export type Player = {
 };
 
 export type LifeEvent = {
-  id: string;
+  type: 'lifeChanged';
+  clientEventId: string;
+  matchId: string;
   playerId: string;
   delta: number;
+  previousLife: number;
+  nextLife: number;
+  localSequence: number;
+  ownerDeviceId: string;
   createdAt: number;
 };
 
@@ -34,11 +40,44 @@ const storage = createMMKV({ id: 'mana-ledger.local-match' });
 
 const keys = {
   activeMatchId: 'mana-ledger:activeMatchId',
+  deviceId: 'mana-ledger:deviceId',
   match: (matchId: string) => `mana-ledger:match:${matchId}`,
   outbox: (matchId: string) => `mana-ledger:outbox:${matchId}`,
+  sequence: 'mana-ledger:localSequence',
 };
 
 const DEFAULT_ACTIVE_MATCH_ID = 'local-default-match';
+
+export function createLifeChangedEvent({
+  delta,
+  nextLife,
+  playerId,
+  previousLife,
+}: {
+  delta: number;
+  nextLife: number;
+  playerId: string;
+  previousLife: number;
+}): LifeEvent {
+  const matchId = storage.getString(keys.activeMatchId) ?? DEFAULT_ACTIVE_MATCH_ID;
+  const ownerDeviceId = getOrCreateDeviceId();
+  const localSequence = nextLocalSequence();
+  const createdAt = Date.now();
+  const clientEventId = `${ownerDeviceId}:${localSequence}:${createdAt.toString(36)}`;
+
+  return {
+    type: 'lifeChanged',
+    clientEventId,
+    matchId,
+    playerId,
+    delta,
+    previousLife,
+    nextLife,
+    localSequence,
+    ownerDeviceId,
+    createdAt,
+  };
+}
 
 export function loadLocalMatch(): LocalMatchSnapshot | undefined {
   const activeMatchId = storage.getString(keys.activeMatchId) ?? DEFAULT_ACTIVE_MATCH_ID;
@@ -91,4 +130,23 @@ function readJson<T>(key: string, fallback: T): T {
     console.warn(`Could not parse MMKV value for ${key}`, error);
     return fallback;
   }
+}
+
+function getOrCreateDeviceId() {
+  const savedDeviceId = storage.getString(keys.deviceId);
+  if (savedDeviceId) return savedDeviceId;
+
+  const deviceId = createOpaqueId('dev');
+  storage.set(keys.deviceId, deviceId);
+  return deviceId;
+}
+
+function nextLocalSequence() {
+  const sequence = (storage.getNumber(keys.sequence) ?? 0) + 1;
+  storage.set(keys.sequence, sequence);
+  return sequence;
+}
+
+function createOpaqueId(prefix: string) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }

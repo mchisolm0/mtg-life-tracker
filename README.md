@@ -5,32 +5,53 @@ React Native + Expo prototype for tracking life totals in games like Magic: The 
 ## What is built
 
 - Expo SDK 56 / React Native 0.85 TypeScript app.
-- Five toggleable visual prototypes:
-  1. **Arena Command** — high-contrast table dashboard.
-  2. **Neon Stack** — arcade-inspired glowing controls.
-  3. **Spellbook** — warm parchment/fantasy style.
-  4. **Quiet Match** — minimal, battery-friendly UI.
-  5. **Store Ops** — tournament/store operation concept.
-- Four-player Commander-style starting state.
-- Fast life controls: `-5`, `-1`, `+1`, `+5`.
-- Poison and commander damage counters.
+- Minimal four-player Commander-style game table.
+- Screen-filling player panels with large invisible tap zones.
+- Fast life controls: tap the top half of a panel for `+1`, bottom half for `-1`.
+- Tiny center affordance: tap to cycle visual themes, long-press to reset the local match to 40 life.
 - Local-first MVP persistence with `react-native-mmkv`.
 - Accepted MVP sync architecture: MMKV local/offline store + Convex remote source of truth + optimistic life-change events.
 
 ## Run
 
+This app uses native code through `react-native-mmkv`, so Expo Go is not a supported runtime. Use a development build.
+
 ```bash
 bun install
 bun run ios
+bun run android
+```
+
+Start Metro for an installed development build:
+
+```bash
+bun start
+```
+
+Web is still useful for quick layout checks, but native simulator/device validation is required before merging changes that touch storage or runtime behavior.
+
+```bash
 bun run web
 ```
 
-If Metro port `8081` is already taken, run:
+## Build scripts
 
 ```bash
-bunx expo start --web --port 8083
-bunx expo start --ios --port 8082
+bun run prebuild:clean
+bun run build:ios:sim
+bun run build:ios:dev
+bun run build:android:dev
 ```
+
+## Verify
+
+```bash
+bun run typecheck
+bun run doctor
+bun run export:web
+```
+
+For UI or runtime changes, capture a simulator/device screenshot or short screen recording and include it in the handoff or PR. Prefer a recording when validating gestures, MMKV persistence after restart, or offline/reconnect behavior.
 
 ## Sync architecture decision
 

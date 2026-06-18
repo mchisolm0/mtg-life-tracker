@@ -1,15 +1,18 @@
 {
   "expo": {
-    "name": "mtg-life-tracker",
-    "slug": "mtg-life-tracker",
+    "name": "Mana Ledger",
+    "slug": "mana-ledger",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "mana-ledger",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.mchisolm0.manaledger",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.mchisolm0.manaledger",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
