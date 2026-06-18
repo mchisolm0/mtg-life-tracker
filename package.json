@@ -38,7 +38,8 @@
     "test:convex-sync": "bun test tests/convexMatchApi.test.js tests/matchSyncCoordinator.test.js",
     "test:remote-link": "bun test tests/remoteMatchLink.test.js",
     "test:storage": "bun test tests/localMatchStoreCore.test.js",
-    "test:sync": "bun test tests/matchOutboxSync.test.js"
+    "test:sync": "bun test tests/matchOutboxSync.test.js",
+    "test:sync-runtime": "bun test tests/matchSyncRuntimeCore.test.js"
   },
   "private": true
 }
