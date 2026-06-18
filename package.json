@@ -33,7 +33,9 @@
     "build:ios:dev": "NODE_ENV=development bunx eas-cli build --profile development:device --platform ios --local",
     "build:android:dev": "NODE_ENV=development bunx eas-cli build --profile development --platform android --local",
     "convex:codegen": "convex codegen --typecheck try",
-    "test:contract": "bun test tests/matchEventContract.test.js"
+    "test": "bun test tests",
+    "test:contract": "bun test tests/matchEventContract.test.js",
+    "test:storage": "bun test tests/localMatchStoreCore.test.js"
   },
   "private": true
 }
