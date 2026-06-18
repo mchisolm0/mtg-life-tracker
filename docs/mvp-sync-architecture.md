@@ -107,7 +107,13 @@ type LocalQueuedEvent = {
   acknowledgedAt?: number;
   convexEventId?: ConvexEventId;
   rejectedAt?: number;
-  rejectionReason?: 'notOwner' | 'matchEnded' | 'playerMissing' | 'invalidDelta' | 'serverError';
+  rejectionReason?:
+    | 'notOwner'
+    | 'matchEnded'
+    | 'playerMissing'
+    | 'invalidDelta'
+    | 'duplicateClientEventId'
+    | 'serverError';
 };
 
 type ConvexMatch = {
@@ -362,15 +368,16 @@ Output:
 } | {
   accepted: false;
   clientEventId: ClientEventId;
-  reason: 'notOwner' | 'matchEnded' | 'playerMissing' | 'invalidDelta';
+  reason: 'notOwner' | 'matchEnded' | 'playerMissing' | 'invalidDelta' | 'duplicateClientEventId';
   canonicalMatch: ConvexMatch;
 }
 ```
 
 Behavior:
 
-- First checks `clientEventId`. If the event was already accepted with the same payload, return the existing accepted result without applying it again.
-- Rejects if the same `clientEventId` exists with a different payload.
+- First validates the event envelope, including that `event.matchId` matches the submitted `matchId`.
+- Then checks `clientEventId`. If the event was already accepted with the same payload, return the existing accepted result without applying it again.
+- Rejects with `duplicateClientEventId` if the same `clientEventId` exists with a different payload.
 - Loads the match and player.
 - Enforces the MVP ownership rule: `event.ownerDeviceId` and authenticated identity, when present, must match the player's owner fields.
 - Applies `delta` to the canonical player life in a transaction, appends `matchEvents`, increments `serverSequence` and match `version`, and returns the updated match.
