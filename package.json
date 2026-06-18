@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
+    "convex": "^1.41.0",
     "expo": "~56.0.12",
     "expo-dev-client": "~56.0.20",
     "expo-status-bar": "~56.0.4",
@@ -30,7 +31,9 @@
     "export:web": "expo export --platform web",
     "build:ios:sim": "NODE_ENV=development bunx eas-cli build --profile development --platform ios --local",
     "build:ios:dev": "NODE_ENV=development bunx eas-cli build --profile development:device --platform ios --local",
-    "build:android:dev": "NODE_ENV=development bunx eas-cli build --profile development --platform android --local"
+    "build:android:dev": "NODE_ENV=development bunx eas-cli build --profile development --platform android --local",
+    "convex:codegen": "convex codegen --typecheck try",
+    "test:contract": "bun test tests/matchEventContract.test.js"
   },
   "private": true
 }
