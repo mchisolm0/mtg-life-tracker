@@ -7,6 +7,7 @@
     "convex": "^1.41.0",
     "expo": "~56.0.12",
     "expo-dev-client": "~56.0.20",
+    "expo-network": "~56.0.5",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -38,6 +39,7 @@
     "test:contract": "bun test tests/matchEventContract.test.js",
     "test:convex-sync": "bun test tests/convexMatchApi.test.js tests/matchSyncCoordinator.test.js",
     "test:remote-link": "bun test tests/remoteMatchLink.test.js",
+    "test:network-sync": "bun test tests/networkSyncTrigger.test.js",
     "test:storage": "bun test tests/localMatchStoreCore.test.js",
     "test:sync": "bun test tests/matchOutboxSync.test.js",
     "test:sync-runtime": "bun test tests/matchSyncRuntimeCore.test.js"

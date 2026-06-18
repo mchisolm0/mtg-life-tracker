@@ -1,3 +1,4 @@
+import * as Network from 'expo-network';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -26,6 +27,10 @@ import {
   type RejectionReason,
 } from './src/storage/localMatchStore';
 import { matchSyncRuntime, type MatchSyncRuntimeSnapshot } from './src/sync/matchSyncRuntime';
+import {
+  isNetworkReachableForSync,
+  shouldRequestSyncForNetworkState,
+} from './src/sync/networkSyncTrigger';
 
 type Theme = {
   key: PrototypeKey;
@@ -126,6 +131,7 @@ export default function App() {
   );
   const [syncWarning, setSyncWarning] = useState<SyncWarning>();
   const matchRef = useRef<LocalMatch | undefined>(undefined);
+  const networkReachableRef = useRef(false);
   const { width, height } = useWindowDimensions();
   const players = match?.players ?? [];
   const startingLife = match?.startingLife ?? selectedStartingLife;
@@ -186,6 +192,34 @@ export default function App() {
     });
 
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    let subscribed = true;
+
+    function handleNetworkState(state: Network.NetworkState) {
+      const shouldSync = shouldRequestSyncForNetworkState(state, networkReachableRef.current);
+      networkReachableRef.current = isNetworkReachableForSync(state);
+
+      if (shouldSync && matchRef.current) {
+        requestSync();
+      }
+    }
+
+    void Network.getNetworkStateAsync()
+      .then((state) => {
+        if (subscribed) {
+          handleNetworkState(state);
+        }
+      })
+      .catch(() => undefined);
+
+    const subscription = Network.addNetworkStateListener(handleNetworkState);
+
+    return () => {
+      subscribed = false;
+      subscription.remove();
+    };
   }, []);
 
   useEffect(() => {
