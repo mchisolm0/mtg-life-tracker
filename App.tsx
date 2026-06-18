@@ -3,13 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import type { LayoutChangeEvent } from 'react-native';
 import {
   createLocalMatch,
@@ -274,58 +274,60 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <StatusBar style={prototype === 'glass' || prototype === 'paper' ? 'dark' : 'light'} />
-      {screen === 'setup' ? (
-        <SetupScreen
-          onSelectPlayerCount={setSelectedPlayerCount}
-          onSelectStartingLife={setSelectedStartingLife}
-          onStart={startMatch}
-          playerCount={selectedPlayerCount}
-          startingLife={selectedStartingLife}
-          theme={theme}
-        />
-      ) : (
-        <View style={[styles.appShell, { backgroundColor: theme.background }]}>
-          <View style={styles.board}>
-            {players.map((player, index) => {
-              const isFullWidthPanel =
-                columns === 2 && players.length % 2 === 1 && index === players.length - 1;
+    <SafeAreaProvider>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+        <StatusBar style={prototype === 'glass' || prototype === 'paper' ? 'dark' : 'light'} />
+        {screen === 'setup' ? (
+          <SetupScreen
+            onSelectPlayerCount={setSelectedPlayerCount}
+            onSelectStartingLife={setSelectedStartingLife}
+            onStart={startMatch}
+            playerCount={selectedPlayerCount}
+            startingLife={selectedStartingLife}
+            theme={theme}
+          />
+        ) : (
+          <View style={[styles.appShell, { backgroundColor: theme.background }]}>
+            <View style={styles.board}>
+              {players.map((player, index) => {
+                const isFullWidthPanel =
+                  columns === 2 && players.length % 2 === 1 && index === players.length - 1;
 
-              return (
-                <LifePanel
-                  columns={columns}
-                  index={index}
-                  isFullWidth={isFullWidthPanel}
-                  key={player.playerId}
-                  lifeSize={lifeSize}
-                  onAdjust={(delta) => adjustLife(player.playerId, delta)}
-                  panelHeight={panelHeight}
-                  player={player}
-                  readOnly={player.ownerDeviceId !== deviceId}
-                  theme={theme}
-                />
-              );
-            })}
+                return (
+                  <LifePanel
+                    columns={columns}
+                    index={index}
+                    isFullWidth={isFullWidthPanel}
+                    key={player.playerId}
+                    lifeSize={lifeSize}
+                    onAdjust={(delta) => adjustLife(player.playerId, delta)}
+                    panelHeight={panelHeight}
+                    player={player}
+                    readOnly={player.ownerDeviceId !== deviceId}
+                    theme={theme}
+                  />
+                );
+              })}
+            </View>
+
+            <View pointerEvents="box-none" style={styles.centerControls}>
+              <Pressable
+                accessibilityHint="Tap to cycle prototype styles. Long press to reset all players to the match starting life."
+                accessibilityLabel="Prototype menu"
+                accessibilityRole="button"
+                onLongPress={resetMatch}
+                onPress={cyclePrototype}
+                style={[styles.centerButton, { backgroundColor: theme.rail, borderColor: theme.border }]}
+              >
+                <Text style={[styles.centerButtonText, { color: theme.railText }]}>≡</Text>
+              </Pressable>
+
+              <SyncStatusBadge onPress={requestSync} snapshot={syncSnapshot} theme={theme} />
+            </View>
           </View>
-
-          <View pointerEvents="box-none" style={styles.centerControls}>
-            <Pressable
-              accessibilityHint="Tap to cycle prototype styles. Long press to reset all players to the match starting life."
-              accessibilityLabel="Prototype menu"
-              accessibilityRole="button"
-              onLongPress={resetMatch}
-              onPress={cyclePrototype}
-              style={[styles.centerButton, { backgroundColor: theme.rail, borderColor: theme.border }]}
-            >
-              <Text style={[styles.centerButtonText, { color: theme.railText }]}>≡</Text>
-            </Pressable>
-
-            <SyncStatusBadge onPress={requestSync} snapshot={syncSnapshot} theme={theme} />
-          </View>
-        </View>
-      )}
-    </SafeAreaView>
+        )}
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
