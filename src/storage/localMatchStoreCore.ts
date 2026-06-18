@@ -325,6 +325,54 @@ export function createLocalMatchStore(storage: LocalMatchStorage, options: Local
     return nextQueuedEvent;
   }
 
+  function markQueuedEventSyncing({
+    clientEventId,
+    lastAttemptAt = now(),
+  }: {
+    clientEventId: string;
+    lastAttemptAt?: number;
+  }) {
+    const queuedEvent = readQueuedEvent(clientEventId);
+    if (!queuedEvent) return undefined;
+
+    const nextQueuedEvent: LocalQueuedEvent = {
+      ...queuedEvent,
+      attempts: queuedEvent.attempts + 1,
+      lastAttemptAt,
+      nextAttemptAt: undefined,
+      status: 'syncing',
+    };
+
+    writeQueuedEvent(nextQueuedEvent);
+
+    return nextQueuedEvent;
+  }
+
+  function markQueuedEventRetry({
+    clientEventId,
+    lastAttemptAt = now(),
+    nextAttemptAt,
+  }: {
+    clientEventId: string;
+    lastAttemptAt?: number;
+    nextAttemptAt: number;
+  }) {
+    const queuedEvent = readQueuedEvent(clientEventId);
+    if (!queuedEvent) return undefined;
+
+    const nextQueuedEvent: LocalQueuedEvent = {
+      ...queuedEvent,
+      lastAttemptAt,
+      nextAttemptAt,
+      status: 'retry',
+    };
+
+    writeQueuedEvent(nextQueuedEvent);
+    appendOutboxId(clientEventId);
+
+    return nextQueuedEvent;
+  }
+
   function markQueuedEventRejected({
     clientEventId,
     rejectedAt = now(),
@@ -517,7 +565,9 @@ export function createLocalMatchStore(storage: LocalMatchStorage, options: Local
     getOrCreateDeviceId,
     loadLocalMatch,
     markQueuedEventAcked,
+    markQueuedEventRetry,
     markQueuedEventRejected,
+    markQueuedEventSyncing,
     readOutboxIds,
     readQueuedEvent,
     recordLifeChange,

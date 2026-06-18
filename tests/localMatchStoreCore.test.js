@@ -140,6 +140,40 @@ describe('local match storage contract', () => {
     expect(store.readOutboxIds()).toEqual([]);
   });
 
+  test('syncing and retry transitions preserve active outbox position', () => {
+    const storage = createMemoryStorage();
+    const store = createTestStore(storage);
+    const deviceId = store.getOrCreateDeviceId();
+    const match = store.createLocalMatch({
+      matchId: 'local_1',
+      players: [createPlayer('p1', deviceId)],
+      prototype: 'classic',
+      startingLife: 40,
+    });
+    const nextMatch = store.recordLifeChange(match, 'p1', 1);
+    const clientEventId = nextMatch.eventIds[0];
+
+    const syncingEvent = store.markQueuedEventSyncing({
+      clientEventId,
+      lastAttemptAt: 2000,
+    });
+
+    expect(syncingEvent.status).toBe('syncing');
+    expect(syncingEvent.attempts).toBe(1);
+    expect(syncingEvent.lastAttemptAt).toBe(2000);
+    expect(store.readOutboxIds()).toEqual([clientEventId]);
+
+    const retryEvent = store.markQueuedEventRetry({
+      clientEventId,
+      lastAttemptAt: 2000,
+      nextAttemptAt: 3000,
+    });
+
+    expect(retryEvent.status).toBe('retry');
+    expect(retryEvent.nextAttemptAt).toBe(3000);
+    expect(store.readOutboxIds()).toEqual([clientEventId]);
+  });
+
   test('migrates legacy embedded snapshots into match, event, and outbox records', () => {
     const storage = createMemoryStorage({
       [localMatchStorageKeys.activeMatchId]: 'legacy_1',
