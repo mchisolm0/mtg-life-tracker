@@ -204,7 +204,7 @@ describe('match outbox sync bootstrap', () => {
   });
 
   test('leaves local-only matches queued until remote match creation is wired', async () => {
-    const { match, store } = createSyncedMatchStore({ matchId: 'local_1' });
+    const { match, store } = createSyncedMatchStore({ localMatchId: 'legacy_1', matchId: 'legacy_1' });
     const nextMatch = store.recordLifeChange(match, 'p1', -1);
     const clientEventId = nextMatch.eventIds[0];
     let calls = 0;
@@ -228,7 +228,7 @@ describe('match outbox sync bootstrap', () => {
     expect(calls).toBe(0);
     expect(result.skipped).toBe(1);
     expect(store.readOutboxIds()).toEqual([clientEventId]);
-    expect(store.readQueuedEvent(clientEventId).status).toBe('pending');
+    expect(store.readQueuedEvent(clientEventId).status).toBe('localOnly');
   });
 
   test('calculates capped exponential retry delays', () => {
@@ -239,12 +239,12 @@ describe('match outbox sync bootstrap', () => {
   });
 });
 
-function createSyncedMatchStore({ matchId = 'match_remote_1' } = {}) {
+function createSyncedMatchStore({ localMatchId = 'local_1', matchId = 'match_remote_1' } = {}) {
   const storage = createMemoryStorage();
   const store = createTestStore(storage);
   const deviceId = store.getOrCreateDeviceId();
   const match = store.createLocalMatch({
-    localMatchId: 'local_1',
+    localMatchId,
     matchId,
     players: [createPlayer('p1', deviceId), createPlayer('p2', deviceId)],
     prototype: 'classic',
