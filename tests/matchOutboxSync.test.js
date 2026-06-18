@@ -30,6 +30,7 @@ describe('match outbox sync bootstrap', () => {
       accepted: 2,
       failedTransient: 0,
       rejected: 0,
+      rejectedEvents: [],
       skipped: 0,
       submitted: 2,
     });
@@ -66,6 +67,12 @@ describe('match outbox sync bootstrap', () => {
     });
 
     expect(result.rejected).toBe(1);
+    expect(result.rejectedEvents).toEqual([
+      {
+        clientEventId,
+        reason: 'notOwner',
+      },
+    ]);
     expect(store.readOutboxIds()).toEqual([]);
     expect(store.readQueuedEvent(clientEventId)).toMatchObject({
       rejectedAt: 6000,
@@ -97,6 +104,7 @@ describe('match outbox sync bootstrap', () => {
       accepted: 0,
       failedTransient: 1,
       rejected: 0,
+      rejectedEvents: [],
       skipped: 0,
       submitted: 1,
     });
@@ -197,6 +205,12 @@ describe('match outbox sync bootstrap', () => {
     });
 
     expect(result.rejected).toBe(1);
+    expect(result.rejectedEvents).toEqual([
+      {
+        clientEventId: firstEventId,
+        reason: 'invalidDelta',
+      },
+    ]);
     expect(store.readOutboxIds()).toEqual([secondEventId]);
     expect(store.readQueuedEvent(firstEventId).status).toBe('rejected');
     expect(store.readQueuedEvent(secondEventId).status).toBe('pending');

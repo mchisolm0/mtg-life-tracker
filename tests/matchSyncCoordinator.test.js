@@ -53,6 +53,7 @@ describe('match sync coordinator', () => {
       accepted: 1,
       failedTransient: 0,
       rejected: 0,
+      rejectedEvents: [],
       skipped: 0,
       submitted: 1,
     });
