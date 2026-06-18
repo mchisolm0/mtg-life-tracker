@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -23,6 +24,7 @@ import {
   type LocalPlayer,
   type PrototypeKey,
 } from './src/storage/localMatchStore';
+import { matchSyncRuntime, type MatchSyncRuntimeSnapshot } from './src/sync/matchSyncRuntime';
 
 type Theme = {
   key: PrototypeKey;
@@ -113,6 +115,9 @@ export default function App() {
   const [selectedStartingLife, setSelectedStartingLife] = useState(DEFAULT_STARTING_LIFE);
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [loaded, setLoaded] = useState(false);
+  const [syncSnapshot, setSyncSnapshot] = useState<MatchSyncRuntimeSnapshot>(() =>
+    matchSyncRuntime.getSnapshot(),
+  );
   const matchRef = useRef<LocalMatch | undefined>(undefined);
   const { width, height } = useWindowDimensions();
   const players = match?.players ?? [];
@@ -149,6 +154,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    return matchSyncRuntime.subscribe((snapshot) => {
+      setSyncSnapshot(snapshot);
+
+      if (snapshot.status === 'synced' || snapshot.status === 'queued' || snapshot.status === 'error') {
+        refreshMatchFromStore();
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && matchRef.current) {
+        requestSync();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || screen !== 'game') return;
+
+    requestSync();
+  }, [loaded, screen]);
+
+  useEffect(() => {
     if (!loaded || screen !== 'game' || !matchRef.current) return;
 
     const currentMatch = matchRef.current;
@@ -170,6 +201,7 @@ export default function App() {
     if (!player || player.ownerDeviceId !== deviceId) return;
 
     commitMatch(recordLifeChange(matchRef.current, playerId, delta));
+    requestSync();
   }
 
   function startMatch() {
@@ -191,6 +223,7 @@ export default function App() {
     saveLocalMatch(nextMatch);
     commitMatch(nextMatch);
     setScreen('game');
+    requestSync();
   }
 
   function cyclePrototype() {
@@ -216,6 +249,7 @@ export default function App() {
     }
 
     commitMatch(nextMatch);
+    requestSync();
   }
 
   function commitMatch(nextMatch: LocalMatch) {
@@ -226,6 +260,17 @@ export default function App() {
 
     matchRef.current = themedMatch;
     setMatch(themedMatch);
+  }
+
+  function refreshMatchFromStore() {
+    const saved = loadLocalMatch();
+    if (!saved || !matchRef.current) return;
+
+    commitMatch(saved);
+  }
+
+  function requestSync() {
+    void matchSyncRuntime.syncNow();
   }
 
   return (
@@ -264,19 +309,65 @@ export default function App() {
             })}
           </View>
 
-          <Pressable
-            accessibilityHint="Tap to cycle prototype styles. Long press to reset all players to the match starting life."
-            accessibilityLabel="Prototype menu"
-            accessibilityRole="button"
-            onLongPress={resetMatch}
-            onPress={cyclePrototype}
-            style={[styles.centerButton, { backgroundColor: theme.rail, borderColor: theme.border }]}
-          >
-            <Text style={[styles.centerButtonText, { color: theme.railText }]}>≡</Text>
-          </Pressable>
+          <View pointerEvents="box-none" style={styles.centerControls}>
+            <Pressable
+              accessibilityHint="Tap to cycle prototype styles. Long press to reset all players to the match starting life."
+              accessibilityLabel="Prototype menu"
+              accessibilityRole="button"
+              onLongPress={resetMatch}
+              onPress={cyclePrototype}
+              style={[styles.centerButton, { backgroundColor: theme.rail, borderColor: theme.border }]}
+            >
+              <Text style={[styles.centerButtonText, { color: theme.railText }]}>≡</Text>
+            </Pressable>
+
+            <SyncStatusBadge onPress={requestSync} snapshot={syncSnapshot} theme={theme} />
+          </View>
         </View>
       )}
     </SafeAreaView>
+  );
+}
+
+function SyncStatusBadge({
+  onPress,
+  snapshot,
+  theme,
+}: {
+  onPress: () => void;
+  snapshot: MatchSyncRuntimeSnapshot;
+  theme: Theme;
+}) {
+  const disabled = !snapshot.enabled || snapshot.status === 'syncing';
+  const label = syncStatusLabel(snapshot);
+
+  return (
+    <Pressable
+      accessibilityHint={disabled ? undefined : 'Runs match sync now.'}
+      accessibilityLabel={`Sync status: ${label}`}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[
+        styles.syncBadge,
+        {
+          backgroundColor: theme.rail,
+          borderColor: theme.border,
+        },
+        disabled && styles.syncBadgeDisabled,
+      ]}
+    >
+      <View style={[styles.syncBadgeDot, { backgroundColor: syncStatusColor(snapshot) }]} />
+      <Text
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+        numberOfLines={1}
+        style={[styles.syncBadgeText, { color: theme.railText }]}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -521,6 +612,26 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function syncStatusColor(snapshot: MatchSyncRuntimeSnapshot) {
+  if (!snapshot.enabled) return '#64748b';
+  if (snapshot.status === 'syncing') return '#3b82f6';
+  if (snapshot.status === 'synced') return '#16a34a';
+  if (snapshot.status === 'queued') return '#f59e0b';
+  if (snapshot.status === 'error') return '#dc2626';
+
+  return '#94a3b8';
+}
+
+function syncStatusLabel(snapshot: MatchSyncRuntimeSnapshot) {
+  if (!snapshot.enabled) return 'Local only';
+  if (snapshot.status === 'syncing') return 'Syncing';
+  if (snapshot.status === 'error') return 'Sync error';
+  if (snapshot.outboxCount > 0) return `${snapshot.outboxCount} queued`;
+  if (snapshot.status === 'synced') return 'Synced';
+
+  return 'Ready';
+}
+
 function createPlayers({
   count,
   ownerDeviceId,
@@ -682,22 +793,54 @@ const styles = StyleSheet.create({
     marginTop: -10,
     opacity: 0.55,
   },
+  centerControls: {
+    alignItems: 'center',
+    gap: 8,
+    left: '50%',
+    position: 'absolute',
+    top: '50%',
+    transform: [{ translateX: -63 }, { translateY: -45 }],
+    width: 126,
+    zIndex: 5,
+  },
   centerButton: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 3,
     height: 46,
     justifyContent: 'center',
-    left: '50%',
-    position: 'absolute',
-    top: '50%',
-    transform: [{ translateX: -23 }, { translateY: -23 }],
     width: 46,
-    zIndex: 5,
   },
   centerButtonText: {
     fontSize: 27,
     fontWeight: '900',
+    letterSpacing: 0,
     lineHeight: 30,
+  },
+  syncBadge: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 2,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 36,
+    width: 126,
+    paddingHorizontal: 10,
+  },
+  syncBadgeDisabled: {
+    opacity: 0.88,
+  },
+  syncBadgeDot: {
+    borderRadius: 5,
+    height: 10,
+    width: 10,
+  },
+  syncBadgeText: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    maxWidth: 86,
+    textTransform: 'uppercase',
   },
 });
