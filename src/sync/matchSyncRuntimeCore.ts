@@ -1,3 +1,4 @@
+import type { RejectionReason } from '../storage/localMatchStoreCore';
 import { syncLocalMatch, type MatchSyncCoordinatorApi, type MatchSyncCoordinatorStore } from './matchSyncCoordinator';
 
 export type MatchSyncRuntimeStatus = 'localOnly' | 'idle' | 'syncing' | 'synced' | 'queued' | 'error';
@@ -5,9 +6,15 @@ export type MatchSyncRuntimeStatus = 'localOnly' | 'idle' | 'syncing' | 'synced'
 export type MatchSyncRuntimeSnapshot = {
   enabled: boolean;
   lastError?: string;
+  lastRejection?: MatchSyncRuntimeRejection;
   lastSyncedAt?: number;
   outboxCount: number;
   status: MatchSyncRuntimeStatus;
+};
+
+export type MatchSyncRuntimeRejection = {
+  clientEventId: string;
+  reason: RejectionReason;
 };
 
 export type MatchSyncRuntimeResult =
@@ -102,6 +109,7 @@ export function createMatchSyncRuntime({
     setSnapshot({
       ...snapshot,
       lastError: undefined,
+      lastRejection: undefined,
       outboxCount: safeOutboxCount(store),
       status: 'syncing',
     });
@@ -113,7 +121,7 @@ export function createMatchSyncRuntime({
       }
 
       cachedApi = syncApi;
-      await syncLocalMatch({
+      const syncResult = await syncLocalMatch({
         api: syncApi,
         limit,
         now,
@@ -124,6 +132,7 @@ export function createMatchSyncRuntime({
       const outboxCount = safeOutboxCount(store);
       setSnapshot({
         enabled,
+        lastRejection: syncResult.outbox.rejectedEvents.at(-1),
         lastSyncedAt: now(),
         outboxCount,
         status: outboxCount > 0 ? 'queued' : 'synced',
@@ -132,6 +141,7 @@ export function createMatchSyncRuntime({
       setSnapshot({
         ...snapshot,
         lastError: error instanceof Error ? error.message : 'Sync failed.',
+        lastRejection: undefined,
         outboxCount: safeOutboxCount(store),
         status: 'error',
       });

@@ -23,6 +23,7 @@ import {
   type LocalMatch,
   type LocalPlayer,
   type PrototypeKey,
+  type RejectionReason,
 } from './src/storage/localMatchStore';
 import { matchSyncRuntime, type MatchSyncRuntimeSnapshot } from './src/sync/matchSyncRuntime';
 
@@ -40,6 +41,11 @@ type Theme = {
 };
 
 type Screen = 'setup' | 'game';
+
+type SyncWarning = {
+  clientEventId: string;
+  reason: RejectionReason;
+};
 
 const themes: Theme[] = [
   {
@@ -118,6 +124,7 @@ export default function App() {
   const [syncSnapshot, setSyncSnapshot] = useState<MatchSyncRuntimeSnapshot>(() =>
     matchSyncRuntime.getSnapshot(),
   );
+  const [syncWarning, setSyncWarning] = useState<SyncWarning>();
   const matchRef = useRef<LocalMatch | undefined>(undefined);
   const { width, height } = useWindowDimensions();
   const players = match?.players ?? [];
@@ -159,6 +166,14 @@ export default function App() {
 
       if (snapshot.status === 'synced' || snapshot.status === 'queued' || snapshot.status === 'error') {
         refreshMatchFromStore();
+      }
+
+      if (snapshot.lastRejection) {
+        setSyncWarning((current) =>
+          current?.clientEventId === snapshot.lastRejection?.clientEventId
+            ? current
+            : snapshot.lastRejection,
+        );
       }
     });
   }, []);
@@ -324,6 +339,13 @@ export default function App() {
 
               <SyncStatusBadge onPress={requestSync} snapshot={syncSnapshot} theme={theme} />
             </View>
+            {syncWarning ? (
+              <SyncWarningBanner
+                onDismiss={() => setSyncWarning(undefined)}
+                theme={theme}
+                warning={syncWarning}
+              />
+            ) : null}
           </View>
         )}
       </SafeAreaView>
@@ -370,6 +392,41 @@ function SyncStatusBadge({
         {label}
       </Text>
     </Pressable>
+  );
+}
+
+function SyncWarningBanner({
+  onDismiss,
+  theme,
+  warning,
+}: {
+  onDismiss: () => void;
+  theme: Theme;
+  warning: SyncWarning;
+}) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={[
+        styles.syncWarning,
+        {
+          backgroundColor: theme.rail,
+          borderColor: theme.border,
+        },
+      ]}
+    >
+      <Text numberOfLines={2} style={[styles.syncWarningText, { color: theme.railText }]}>
+        {rejectionMessage(warning.reason)}
+      </Text>
+      <Pressable
+        accessibilityLabel="Dismiss sync warning"
+        accessibilityRole="button"
+        onPress={onDismiss}
+        style={styles.syncWarningDismiss}
+      >
+        <Text style={[styles.syncWarningDismissText, { color: theme.railText }]}>×</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -634,6 +691,23 @@ function syncStatusLabel(snapshot: MatchSyncRuntimeSnapshot) {
   return 'Ready';
 }
 
+function rejectionMessage(reason: RejectionReason) {
+  switch (reason) {
+    case 'notOwner':
+      return 'Score change was not accepted on this device.';
+    case 'matchEnded':
+      return 'Score change was not accepted because the match ended.';
+    case 'playerMissing':
+      return 'Score change was not accepted for this player.';
+    case 'duplicateClientEventId':
+      return 'Score change was already handled differently.';
+    case 'invalidDelta':
+    case 'serverError':
+    default:
+      return 'Score change was not accepted.';
+  }
+}
+
 function createPlayers({
   count,
   ownerDeviceId,
@@ -801,8 +875,8 @@ const styles = StyleSheet.create({
     left: '50%',
     position: 'absolute',
     top: '50%',
-    transform: [{ translateX: -63 }, { translateY: -45 }],
-    width: 126,
+    transform: [{ translateX: -129 }, { translateY: -45 }],
+    width: 258,
     zIndex: 5,
   },
   centerButton: {
@@ -844,5 +918,39 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     maxWidth: 86,
     textTransform: 'uppercase',
+  },
+  syncWarning: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 2,
+    bottom: 16,
+    flexDirection: 'row',
+    gap: 8,
+    left: 16,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    position: 'absolute',
+    right: 16,
+    zIndex: 8,
+  },
+  syncWarningDismiss: {
+    alignItems: 'center',
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  syncWarningDismissText: {
+    fontSize: 23,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 25,
+  },
+  syncWarningText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 16,
   },
 });

@@ -78,8 +78,14 @@ export type FlushMatchOutboxResult = {
   accepted: number;
   failedTransient: number;
   rejected: number;
+  rejectedEvents: RejectedSyncEvent[];
   skipped: number;
   submitted: number;
+};
+
+export type RejectedSyncEvent = {
+  clientEventId: string;
+  reason: RejectionReason;
 };
 
 export type FlushMatchOutboxOptions = {
@@ -102,6 +108,7 @@ export async function flushMatchOutbox({
     accepted: 0,
     failedTransient: 0,
     rejected: 0,
+    rejectedEvents: [],
     skipped: 0,
     submitted: 0,
   };
@@ -164,6 +171,10 @@ export async function flushMatchOutbox({
           store,
         });
         result.rejected += 1;
+        result.rejectedEvents.push({
+          clientEventId: response.clientEventId,
+          reason: response.reason,
+        });
       }
     } catch {
       const failedEvent = store.readQueuedEvent(clientEventId) ?? syncingEvent;

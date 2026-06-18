@@ -120,6 +120,103 @@ describe('match sync runtime core', () => {
     expect(store.readQueuedEvent(nextMatch.eventIds[0]).status).toBe('localOnly');
   });
 
+  test('reports server rejections for user-visible warnings', async () => {
+    const { match, store } = createMatchStore({
+      localMatchId: 'local_1',
+      matchId: 'match_remote_1',
+    });
+    const optimisticMatch = store.recordLifeChange(match, 'p1', 1);
+    const clientEventId = optimisticMatch.eventIds[0];
+    const runtime = createMatchSyncRuntime({
+      api: {
+        createOrResume: async () => {
+          throw new Error('already linked matches should not be recreated');
+        },
+        submitLifeEvent: async ({ event }) => ({
+          accepted: false,
+          canonicalMatch: createCanonicalMatch({
+            localMatchId: 'local_1',
+            matchId: 'match_remote_1',
+            p1Life: 40,
+            sourceMatch: optimisticMatch,
+            version: 1,
+          }),
+          clientEventId: event.clientEventId,
+          reason: 'notOwner',
+        }),
+      },
+      now: () => 9000,
+      store,
+    });
+
+    const result = await runtime.syncNow();
+
+    expect(result).toMatchObject({
+      started: true,
+      snapshot: {
+        enabled: true,
+        lastRejection: {
+          clientEventId,
+          reason: 'notOwner',
+        },
+        outboxCount: 0,
+        status: 'synced',
+      },
+    });
+    expect(store.readQueuedEvent(clientEventId)).toMatchObject({
+      rejectedAt: 9000,
+      rejectionReason: 'notOwner',
+      status: 'rejected',
+    });
+    expect(store.loadLocalMatch().players[0].life).toBe(40);
+  });
+
+  test('clears stale rejection details on later syncs without rejections', async () => {
+    const { match, store } = createMatchStore({
+      localMatchId: 'local_1',
+      matchId: 'match_remote_1',
+    });
+    const optimisticMatch = store.recordLifeChange(match, 'p1', 1);
+    let submitCalls = 0;
+    const runtime = createMatchSyncRuntime({
+      api: {
+        createOrResume: async () => {
+          throw new Error('already linked matches should not be recreated');
+        },
+        submitLifeEvent: async ({ event }) => {
+          submitCalls += 1;
+          return {
+            accepted: false,
+            canonicalMatch: createCanonicalMatch({
+              localMatchId: 'local_1',
+              matchId: 'match_remote_1',
+              p1Life: 40,
+              sourceMatch: optimisticMatch,
+              version: 1,
+            }),
+            clientEventId: event.clientEventId,
+            reason: 'notOwner',
+          };
+        },
+      },
+      store,
+    });
+
+    const rejectedResult = await runtime.syncNow();
+    const laterResult = await runtime.syncNow();
+
+    expect(submitCalls).toBe(1);
+    expect(rejectedResult.snapshot.lastRejection).toMatchObject({
+      reason: 'notOwner',
+    });
+    expect(laterResult.snapshot).toMatchObject({
+      outboxCount: 0,
+      status: 'synced',
+    });
+    expect(laterResult.snapshot.lastRejection).toBeUndefined();
+    expect(runtime.getSnapshot().lastRejection).toBeUndefined();
+  });
+
   test('coalesces overlapping sync requests without duplicate submissions', async () => {
     const { match, store } = createMatchStore({
       localMatchId: 'local_1',
