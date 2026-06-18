@@ -5,10 +5,11 @@ React Native + Expo prototype for tracking life totals in games like Magic: The 
 ## What is built
 
 - Expo SDK 56 / React Native 0.85 TypeScript app.
-- Minimal four-player Commander-style game table.
+- Setup screen for choosing 2-6 players and starting life.
+- Minimal Commander-style game table.
 - Screen-filling player panels with large invisible tap zones.
 - Fast life controls: tap the top half of a panel for `+1`, bottom half for `-1`.
-- Tiny center affordance: tap to cycle visual themes, long-press to reset the local match to 40 life.
+- Tiny center affordance: tap to cycle visual themes, long-press to reset the local match to its starting life.
 - Local-first MVP persistence with `react-native-mmkv`.
 - Accepted MVP sync architecture: MMKV local/offline store + Convex remote source of truth + optimistic life-change events.
 

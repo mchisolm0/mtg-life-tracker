@@ -30,6 +30,7 @@ export type QueuedLifeEvent = {
 export type LocalMatchSnapshot = {
   activeMatchId: string;
   prototype: PrototypeKey;
+  startingLife: number;
   players: Player[];
   events: LifeEvent[];
   outbox: QueuedLifeEvent[];
@@ -47,19 +48,22 @@ const keys = {
 };
 
 const DEFAULT_ACTIVE_MATCH_ID = 'local-default-match';
+export const DEFAULT_STARTING_LIFE = 40;
 
 export function createLifeChangedEvent({
   delta,
+  matchId,
   nextLife,
   playerId,
   previousLife,
 }: {
   delta: number;
+  matchId?: string;
   nextLife: number;
   playerId: string;
   previousLife: number;
 }): LifeEvent {
-  const matchId = storage.getString(keys.activeMatchId) ?? DEFAULT_ACTIVE_MATCH_ID;
+  const activeMatchId = matchId ?? storage.getString(keys.activeMatchId) ?? DEFAULT_ACTIVE_MATCH_ID;
   const ownerDeviceId = getOrCreateDeviceId();
   const localSequence = nextLocalSequence();
   const createdAt = Date.now();
@@ -68,7 +72,7 @@ export function createLifeChangedEvent({
   return {
     type: 'lifeChanged',
     clientEventId,
-    matchId,
+    matchId: activeMatchId,
     playerId,
     delta,
     previousLife,
@@ -90,6 +94,7 @@ export function loadLocalMatch(): LocalMatchSnapshot | undefined {
     return {
       ...parsed,
       activeMatchId,
+      startingLife: parsed.startingLife ?? DEFAULT_STARTING_LIFE,
       outbox: readJson<QueuedLifeEvent[]>(keys.outbox(activeMatchId), parsed.outbox ?? []),
     };
   } catch (error) {
@@ -105,19 +110,28 @@ export function saveLocalMatch(snapshot: LocalMatchSnapshot) {
 }
 
 export function createLocalMatchSnapshot({
+  activeMatchId = DEFAULT_ACTIVE_MATCH_ID,
   events,
   outbox,
   players,
   prototype,
-}: Omit<LocalMatchSnapshot, 'activeMatchId' | 'updatedAt'>): LocalMatchSnapshot {
+  startingLife = DEFAULT_STARTING_LIFE,
+}: Omit<LocalMatchSnapshot, 'activeMatchId' | 'updatedAt'> & {
+  activeMatchId?: string;
+}): LocalMatchSnapshot {
   return {
-    activeMatchId: DEFAULT_ACTIVE_MATCH_ID,
+    activeMatchId,
     events,
     outbox,
     players,
     prototype,
+    startingLife,
     updatedAt: Date.now(),
   };
+}
+
+export function createLocalMatchId() {
+  return createOpaqueId('local');
 }
 
 function readJson<T>(key: string, fallback: T): T {
