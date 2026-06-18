@@ -9,17 +9,19 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import {
-  createLifeChangedEvent,
+  createLocalMatch,
   createLocalMatchId,
-  createLocalMatchSnapshot,
   DEFAULT_STARTING_LIFE,
+  MAX_LIFE_DELTA,
+  getOrCreateDeviceId,
   loadLocalMatch,
+  recordLifeChange,
   saveLocalMatch,
-  type LifeEvent,
-  type Player,
+  type LocalMatch,
+  type LocalPlayer,
   type PrototypeKey,
-  type QueuedLifeEvent,
 } from './src/storage/localMatchStore';
 
 type Theme = {
@@ -103,25 +105,18 @@ const themes: Theme[] = [
 const playerCounts = [2, 3, 4, 5, 6];
 const startingLifeOptions = [20, 30, 40];
 
-const initialPlayers = createPlayers({
-  count: 4,
-  prototype: 'classic',
-  startingLife: DEFAULT_STARTING_LIFE,
-});
-
 export default function App() {
   const [screen, setScreen] = useState<Screen>('setup');
-  const [activeMatchId, setActiveMatchId] = useState<string>();
+  const [match, setMatch] = useState<LocalMatch>();
   const [prototype, setPrototype] = useState<PrototypeKey>('classic');
   const [selectedPlayerCount, setSelectedPlayerCount] = useState(4);
   const [selectedStartingLife, setSelectedStartingLife] = useState(DEFAULT_STARTING_LIFE);
-  const [startingLife, setStartingLife] = useState(DEFAULT_STARTING_LIFE);
-  const [players, setPlayers] = useState<Player[]>(initialPlayers);
-  const [events, setEvents] = useState<LifeEvent[]>([]);
-  const [outbox, setOutbox] = useState<QueuedLifeEvent[]>([]);
+  const [deviceId] = useState(() => getOrCreateDeviceId());
   const [loaded, setLoaded] = useState(false);
-  const playersRef = useRef(initialPlayers);
+  const matchRef = useRef<LocalMatch | undefined>(undefined);
   const { width, height } = useWindowDimensions();
+  const players = match?.players ?? [];
+  const startingLife = match?.startingLife ?? selectedStartingLife;
 
   const theme = useMemo(
     () => themes.find((candidate) => candidate.key === prototype) ?? themes[0],
@@ -129,7 +124,7 @@ export default function App() {
   );
 
   const columns = width > 700 || width > height ? 4 : 2;
-  const rows = Math.ceil(players.length / columns);
+  const rows = Math.max(1, Math.ceil(players.length / columns));
   const panelHeight = Math.max(178, (height - 92) / rows);
   const lifeSize = Math.min(columns === 4 ? 78 : 108, Math.max(68, width / 4.6));
 
@@ -137,17 +132,16 @@ export default function App() {
     const saved = loadLocalMatch();
 
     if (saved) {
-      const restoredPlayers = applyThemeColors(saved.players, saved.prototype);
+      const restoredMatch = {
+        ...saved,
+        players: applyThemeColors(saved.players, saved.prototype),
+      };
 
       setPrototype(saved.prototype);
-      setPlayers(restoredPlayers);
-      playersRef.current = restoredPlayers;
-      setActiveMatchId(saved.activeMatchId);
-      setStartingLife(saved.startingLife);
+      setMatch(restoredMatch);
+      matchRef.current = restoredMatch;
       setSelectedPlayerCount(saved.players.length);
       setSelectedStartingLife(saved.startingLife);
-      setEvents(saved.events);
-      setOutbox(saved.outbox);
       setScreen('game');
     }
 
@@ -155,79 +149,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!loaded || screen !== 'game' || !activeMatchId) return;
+    if (!loaded || screen !== 'game' || !matchRef.current) return;
 
-    saveLocalMatch(
-      createLocalMatchSnapshot({
-        activeMatchId,
-        events,
-        outbox,
-        players,
-        prototype,
-        startingLife,
-      }),
-    );
-  }, [activeMatchId, events, loaded, outbox, players, prototype, screen, startingLife]);
+    const currentMatch = matchRef.current;
+    const nextMatch = {
+      ...currentMatch,
+      players: applyThemeColors(currentMatch.players, prototype),
+      prototype,
+      updatedAt: Date.now(),
+    };
 
-  useEffect(() => {
-    setPlayers((current) => {
-      const themedPlayers = applyThemeColors(current, prototype);
-      playersRef.current = themedPlayers;
-      return themedPlayers;
-    });
-  }, [prototype]);
+    commitMatch(nextMatch);
+    saveLocalMatch(nextMatch);
+  }, [loaded, prototype, screen]);
 
   function adjustLife(playerId: string, delta: number) {
-    if (!activeMatchId) return;
+    if (!matchRef.current) return;
 
-    const player = playersRef.current.find((candidate) => candidate.id === playerId);
-    if (!player) return;
+    const player = matchRef.current.players.find((candidate) => candidate.playerId === playerId);
+    if (!player || player.ownerDeviceId !== deviceId) return;
 
-    const nextLife = player.life + delta;
-    const event = createLifeChangedEvent({
-      delta,
-      matchId: activeMatchId,
-      nextLife,
-      playerId,
-      previousLife: player.life,
-    });
-    const nextPlayers = playersRef.current.map((candidate) =>
-      candidate.id === playerId ? { ...candidate, life: nextLife } : candidate,
-    );
-
-    playersRef.current = nextPlayers;
-    setPlayers(nextPlayers);
-    setEvents((current) => [event, ...current].slice(0, 100));
-    setOutbox((current) => [...current, { event, status: 'pending' }]);
+    commitMatch(recordLifeChange(matchRef.current, playerId, delta));
   }
 
   function startMatch() {
-    const nextActiveMatchId = createLocalMatchId();
+    const nextMatchId = createLocalMatchId();
     const nextPlayers = createPlayers({
       count: selectedPlayerCount,
+      ownerDeviceId: deviceId,
       prototype,
       startingLife: selectedStartingLife,
     });
-    const nextEvents: LifeEvent[] = [];
-    const nextOutbox: QueuedLifeEvent[] = [];
+    const nextMatch = createLocalMatch({
+      localMatchId: nextMatchId,
+      matchId: nextMatchId,
+      players: nextPlayers,
+      prototype,
+      startingLife: selectedStartingLife,
+    });
 
-    saveLocalMatch(
-      createLocalMatchSnapshot({
-        activeMatchId: nextActiveMatchId,
-        events: nextEvents,
-        outbox: nextOutbox,
-        players: nextPlayers,
-        prototype,
-        startingLife: selectedStartingLife,
-      }),
-    );
-
-    playersRef.current = nextPlayers;
-    setActiveMatchId(nextActiveMatchId);
-    setStartingLife(selectedStartingLife);
-    setPlayers(nextPlayers);
-    setEvents(nextEvents);
-    setOutbox(nextOutbox);
+    saveLocalMatch(nextMatch);
+    commitMatch(nextMatch);
     setScreen('game');
   }
 
@@ -238,15 +200,32 @@ export default function App() {
   }
 
   function resetMatch() {
-    const resetPlayers = createPlayers({
-      count: playersRef.current.length,
-      prototype,
-      startingLife,
-    });
-    playersRef.current = resetPlayers;
-    setPlayers(resetPlayers);
-    setEvents([]);
-    setOutbox([]);
+    if (!matchRef.current) return;
+
+    let nextMatch = matchRef.current;
+
+    for (const player of matchRef.current.players) {
+      if (player.ownerDeviceId !== deviceId) continue;
+
+      let remainingDelta = startingLife - player.life;
+      while (remainingDelta !== 0) {
+        const delta = clamp(remainingDelta, -MAX_LIFE_DELTA, MAX_LIFE_DELTA);
+        nextMatch = recordLifeChange(nextMatch, player.playerId, delta);
+        remainingDelta -= delta;
+      }
+    }
+
+    commitMatch(nextMatch);
+  }
+
+  function commitMatch(nextMatch: LocalMatch) {
+    const themedMatch = {
+      ...nextMatch,
+      players: applyThemeColors(nextMatch.players, nextMatch.prototype),
+    };
+
+    matchRef.current = themedMatch;
+    setMatch(themedMatch);
   }
 
   return (
@@ -273,11 +252,12 @@ export default function App() {
                   columns={columns}
                   index={index}
                   isFullWidth={isFullWidthPanel}
-                  key={player.id}
+                  key={player.playerId}
                   lifeSize={lifeSize}
-                  onAdjust={(delta) => adjustLife(player.id, delta)}
+                  onAdjust={(delta) => adjustLife(player.playerId, delta)}
                   panelHeight={panelHeight}
                   player={player}
+                  readOnly={player.ownerDeviceId !== deviceId}
                   theme={theme}
                 />
               );
@@ -400,6 +380,7 @@ function LifePanel({
   onAdjust,
   panelHeight,
   player,
+  readOnly,
   theme,
 }: {
   columns: number;
@@ -408,19 +389,41 @@ function LifePanel({
   lifeSize: number;
   onAdjust: (delta: number) => void;
   panelHeight: number;
-  player: Player;
+  player: LocalPlayer;
+  readOnly: boolean;
   theme: Theme;
 }) {
+  const [panelSize, setPanelSize] = useState({ width: 0, height: 0 });
   const isRightColumn = columns === 2 && index % 2 === 1;
   const rotation = isFullWidth ? '0deg' : columns === 2 ? (isRightColumn ? '90deg' : '-90deg') : '0deg';
-  const lifeDigits = String(player.life).replace('-', '').length;
-  const displayedLifeSize = Math.max(54, lifeSize - Math.max(0, lifeDigits - 2) * 12);
-  const lifeLineHeight = Math.ceil(displayedLifeSize * 1.2);
-  const markerSize = Math.max(36, Math.min(54, displayedLifeSize * 0.48));
-  const markerLineHeight = Math.ceil(markerSize * 1.08);
+  const isRotated = rotation !== '0deg';
+  const measuredWidth = panelSize.width || 1;
+  const measuredHeight = panelSize.height || panelHeight;
+  const overlayWidth = isRotated ? measuredHeight : measuredWidth;
+  const overlayHeight = isRotated ? measuredWidth : measuredHeight;
+  const lifeCharacters = String(player.life).length;
+  const availableLifeWidth = Math.max(72, overlayWidth - 36);
+  const availableLifeHeight = Math.max(54, overlayHeight - 42);
+  const maxLifeSizeByWidth = availableLifeWidth / Math.max(1, lifeCharacters * 0.56);
+  const maxLifeSizeByHeight = availableLifeHeight * 0.58;
+  const displayedLifeSize = Math.max(48, Math.min(lifeSize, 118, maxLifeSizeByWidth, maxLifeSizeByHeight));
+  const lifeLineHeight = Math.ceil(displayedLifeSize * 1.08);
+  const markerBase = Math.min(measuredWidth, measuredHeight);
+  const markerSize = Math.max(54, Math.min(86, markerBase * 0.32));
+  const markerLineHeight = Math.ceil(markerSize * 1.02);
+
+  function handleLayout(event: LayoutChangeEvent) {
+    const { height, width } = event.nativeEvent.layout;
+    setPanelSize((current) =>
+      Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
+        ? current
+        : { width, height },
+    );
+  }
 
   return (
     <View
+      onLayout={handleLayout}
       style={[
         styles.panel,
         {
@@ -433,10 +436,12 @@ function LifePanel({
       ]}
     >
       <Pressable
-        accessibilityLabel={`${player.name} gain 1 life`}
+        accessibilityLabel={`${player.displayName} gain 1 life`}
         accessibilityRole="button"
+        accessibilityState={{ disabled: readOnly }}
+        disabled={readOnly}
         onPress={() => onAdjust(1)}
-        style={styles.tapHalf}
+        style={[styles.tapHalf, readOnly && styles.tapHalfDisabled]}
       >
         <Text
           style={[
@@ -448,9 +453,28 @@ function LifePanel({
         </Text>
       </Pressable>
 
-      <View pointerEvents="none" style={[styles.lifeOverlay, { transform: [{ rotate: rotation }] }]}>
-        <Text style={[styles.playerName, { color: theme.text }]}>{player.name}</Text>
+      <View
+        pointerEvents="none"
+        style={[
+          styles.lifeOverlay,
+          {
+            height: overlayHeight,
+            transform: [
+              { translateX: -overlayWidth / 2 },
+              { translateY: -overlayHeight / 2 },
+              { rotate: rotation },
+            ],
+            width: overlayWidth,
+          },
+        ]}
+      >
+        <Text numberOfLines={1} style={[styles.playerName, { color: theme.text }]}>
+          {player.displayName}
+        </Text>
         <Text
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}
+          numberOfLines={1}
           style={[
             styles.lifeTotal,
             {
@@ -465,10 +489,12 @@ function LifePanel({
       </View>
 
       <Pressable
-        accessibilityLabel={`${player.name} lose 1 life`}
+        accessibilityLabel={`${player.displayName} lose 1 life`}
         accessibilityRole="button"
+        accessibilityState={{ disabled: readOnly }}
+        disabled={readOnly}
         onPress={() => onAdjust(-1)}
-        style={styles.tapHalf}
+        style={[styles.tapHalf, readOnly && styles.tapHalfDisabled]}
       >
         <Text
           style={[
@@ -483,7 +509,7 @@ function LifePanel({
   );
 }
 
-function applyThemeColors(players: Player[], prototype: PrototypeKey) {
+function applyThemeColors(players: LocalPlayer[], prototype: PrototypeKey) {
   const theme = themes.find((candidate) => candidate.key === prototype) ?? themes[0];
   return players.map((player, index) => ({
     ...player,
@@ -491,21 +517,31 @@ function applyThemeColors(players: Player[], prototype: PrototypeKey) {
   }));
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function createPlayers({
   count,
+  ownerDeviceId,
   prototype,
   startingLife,
 }: {
   count: number;
+  ownerDeviceId: string;
   prototype: PrototypeKey;
   startingLife: number;
 }) {
+  const updatedAt = Date.now();
+
   return applyThemeColors(
     Array.from({ length: count }, (_, index) => ({
-      id: `p${index + 1}`,
-      name: `Player ${index + 1}`,
+      playerId: `p${index + 1}`,
+      displayName: `Player ${index + 1}`,
       life: startingLife,
       color: themes[0].playerColors[index % themes[0].playerColors.length],
+      ownerDeviceId,
+      updatedAt,
     })),
     prototype,
   );
@@ -610,26 +646,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
+  tapHalfDisabled: {
+    opacity: 0.45,
+  },
   tapMark: {
     fontWeight: '900',
     opacity: 0.72,
   },
   lifeOverlay: {
     alignItems: 'center',
-    bottom: 0,
     justifyContent: 'center',
-    left: 0,
+    left: '50%',
     padding: 16,
     position: 'absolute',
-    right: 0,
-    top: 0,
+    top: '50%',
     zIndex: 2,
   },
   playerName: {
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: -6,
+    marginBottom: 2,
     opacity: 0.9,
   },
   lifeTotal: {
