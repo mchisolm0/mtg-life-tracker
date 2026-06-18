@@ -35,7 +35,8 @@
     "convex:codegen": "convex codegen --typecheck try",
     "test": "bun test tests",
     "test:contract": "bun test tests/matchEventContract.test.js",
-    "test:storage": "bun test tests/localMatchStoreCore.test.js"
+    "test:storage": "bun test tests/localMatchStoreCore.test.js",
+    "test:sync": "bun test tests/matchOutboxSync.test.js"
   },
   "private": true
 }
